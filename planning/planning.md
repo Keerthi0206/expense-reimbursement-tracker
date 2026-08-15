@@ -56,11 +56,11 @@ frontend-to-backend CORS/login check. See `docs/testing.md` for full results.
 | Phase | Target Dates | Goals |
 |---|---|---|
 | 1 - Plan & scaffold | Aug 14 | Confirm data model, roles, repo structure, planning doc |
-| 2 - Requester flow | Aug 14–15 | Auth, request form, validation, receipt upload, persistence |
-| 3 - Reviewer flow | Aug 15–16 | Reviewer dashboard, approve/reject/paid, history, search/filter |
-| 4 - Secure & test | Aug 16–17 | RBAC enforcement, dashboard totals, automated tests, seed data |
-| 5 - Tier 2 stretch | Aug 17–18 | Only after Tier 1 is complete and tested: pick a small number of Tier 2 items and go deep rather than wide, per the hackathon's own judging guidance |
-| 6 - Polish & submit | Aug 18–19 | Deploy, docs, walkthrough video, final submission check |
+| 2 - Requester flow | Aug 14-15 | Auth, request form, validation, receipt upload, persistence |
+| 3 - Reviewer flow | Aug 15-16 | Reviewer dashboard, approve/reject/paid, history, search/filter |
+| 4 - Secure & test | Aug 16-17 | RBAC enforcement, dashboard totals, automated tests, seed data |
+| 5 - Tier 2 stretch | Aug 17-18 | Only after Tier 1 is complete and tested: pick a small number of Tier 2 items and go deep rather than wide, per the hackathon's own judging guidance |
+| 6 - Polish & submit | Aug 18-19 | Deploy, docs, walkthrough video, final submission check |
 
 Tier 2 items planned for Phase 5, in priority order: editable drafts with resubmission,
 a detailed request/account history audit trail and a more complete automated test suite.
