@@ -95,6 +95,38 @@ def test_admin_users_list_supports_pagination_filtering_and_sorting():
     assert bad_role_resp.status_code == 422
 
 
+def test_reason_is_recorded_for_role_and_status_changes():
+    admin_token, admin_id = login("admin1@test.com")
+    _, reviewer_id = login("reviewer@test.com")
+
+    role_resp = client.patch(
+        f"/api/admin/users/{reviewer_id}/role", headers=auth_headers(admin_token),
+        json={"role": "admin", "reason": "Promoted to help manage the pilot rollout"},
+    )
+    assert role_resp.status_code == 200
+
+    deactivate_resp = client.patch(
+        f"/api/admin/users/{reviewer_id}/status", headers=auth_headers(admin_token),
+        json={"is_active": False, "reason": "Left the organization"},
+    )
+    assert deactivate_resp.status_code == 200
+
+    history_resp = client.get(
+        f"/api/admin/users/{reviewer_id}/history", headers=auth_headers(admin_token)
+    )
+    entries = history_resp.json()["items"]
+    role_entry = next(e for e in entries if e["action"] == "role_changed" and e["new_value"] == "admin")
+    assert role_entry["reason"] == "Promoted to help manage the pilot rollout"
+    deactivate_entry = next(e for e in entries if e["action"] == "deactivated")
+    assert deactivate_entry["reason"] == "Left the organization"
+
+    # revert for other tests
+    client.patch(f"/api/admin/users/{reviewer_id}/status", headers=auth_headers(admin_token),
+                 json={"is_active": True})
+    client.patch(f"/api/admin/users/{reviewer_id}/role", headers=auth_headers(admin_token),
+                 json={"role": "reviewer"})
+
+
 def test_admin_can_change_a_users_role_and_it_is_logged():
     admin_token, admin_id = login("admin1@test.com")
     _, requester_id = login("requester@test.com")

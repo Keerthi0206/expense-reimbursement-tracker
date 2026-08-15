@@ -90,6 +90,36 @@ def test_missing_category_rejected():
     assert resp.status_code == 422
 
 
+def test_nested_history_is_chronologically_ordered():
+    """The frontend does .slice().reverse() on request.history assuming it comes
+    back oldest-first from the backend. Without an explicit order_by on the
+    relationship, that's not guaranteed -- SQLite happens to preserve insertion
+    order by coincidence, but Postgres (used in production, see README) makes
+    no such guarantee. This test locks in that the nested history is actually
+    sorted by timestamp, not just "usually looks right" on SQLite."""
+    req_token = login("req@test.com")
+    rev_token = login("rev@test.com")
+
+    create_resp = client.post("/api/requests", headers=auth_headers(req_token), json={
+        "title": "Chronology test", "amount": 20, "expense_date": "2026-01-05", "category": "other",
+    })
+    request_id = create_resp.json()["id"]
+    fake_jpeg = b"\xff\xd8\xff" + b"0" * 20
+    client.post(f"/api/requests/{request_id}/receipt", headers=auth_headers(req_token),
+                files={"file": ("r.jpg", io.BytesIO(fake_jpeg), "image/jpeg")})
+    client.post(f"/api/requests/{request_id}/submit", headers=auth_headers(req_token))
+    client.get(f"/api/requests/{request_id}", headers=auth_headers(rev_token))  # claims it
+    client.post(f"/api/requests/{request_id}/approve", headers=auth_headers(rev_token), json={})
+    client.post(f"/api/requests/{request_id}/mark-paid", headers=auth_headers(rev_token))
+
+    detail_resp = client.get(f"/api/requests/{request_id}", headers=auth_headers(req_token))
+    timestamps = [h["timestamp"] for h in detail_resp.json()["history"]]
+    assert timestamps == sorted(timestamps), "nested history must be chronologically ordered"
+
+    actions_in_order = [h["action"] for h in detail_resp.json()["history"]]
+    assert actions_in_order == ["created", "submitted", "opened_for_review", "approved", "marked_paid"]
+
+
 def test_full_workflow_create_to_paid():
     req_token = login("req@test.com")
     rev_token = login("rev@test.com")
@@ -165,6 +195,92 @@ def test_full_workflow_create_to_paid():
     history = detail_resp.json()["history"]
     actions = [h["action"] for h in history]
     assert "created" in actions and "submitted" in actions and "approved" in actions and "marked_paid" in actions
+
+
+def test_requester_can_cancel_before_approval():
+    req_token = login("req@test.com")
+    other_token = login("req2@test.com")
+
+    create_resp = client.post("/api/requests", headers=auth_headers(req_token), json={
+        "title": "Cancel me", "amount": 25, "expense_date": "2026-01-05", "category": "other",
+    })
+    request_id = create_resp.json()["id"]
+
+    # another requester can't cancel someone else's request
+    forbidden_resp = client.post(
+        f"/api/requests/{request_id}/cancel", headers=auth_headers(other_token), json={}
+    )
+    assert forbidden_resp.status_code == 403
+
+    # owner can cancel a draft
+    cancel_resp = client.post(
+        f"/api/requests/{request_id}/cancel", headers=auth_headers(req_token),
+        json={"reason": "Submitted by mistake"},
+    )
+    assert cancel_resp.status_code == 200
+    assert cancel_resp.json()["status"] == "cancelled"
+
+    # can't cancel an already-cancelled request
+    again_resp = client.post(f"/api/requests/{request_id}/cancel", headers=auth_headers(req_token), json={})
+    assert again_resp.status_code == 400
+
+    history_resp = client.get(f"/api/requests/{request_id}/history", headers=auth_headers(req_token))
+    entries = history_resp.json()["items"]
+    cancel_entry = next(e for e in entries if e["action"] == "cancelled")
+    assert cancel_entry["comment"] == "Submitted by mistake"
+
+
+def test_cannot_cancel_after_approval():
+    req_token = login("req@test.com")
+    rev_token = login("rev@test.com")
+
+    create_resp = client.post("/api/requests", headers=auth_headers(req_token), json={
+        "title": "Cancel after approval test", "amount": 30, "expense_date": "2026-01-05", "category": "other",
+    })
+    request_id = create_resp.json()["id"]
+    fake_jpeg = b"\xff\xd8\xff" + b"0" * 20
+    client.post(f"/api/requests/{request_id}/receipt", headers=auth_headers(req_token),
+                files={"file": ("r.jpg", io.BytesIO(fake_jpeg), "image/jpeg")})
+    client.post(f"/api/requests/{request_id}/submit", headers=auth_headers(req_token))
+    client.post(f"/api/requests/{request_id}/approve", headers=auth_headers(rev_token), json={})
+
+    cancel_resp = client.post(f"/api/requests/{request_id}/cancel", headers=auth_headers(req_token), json={})
+    assert cancel_resp.status_code == 400
+
+    client.post(f"/api/requests/{request_id}/mark-paid", headers=auth_headers(rev_token))
+    still_blocked_resp = client.post(
+        f"/api/requests/{request_id}/cancel", headers=auth_headers(req_token), json={}
+    )
+    assert still_blocked_resp.status_code == 400
+
+
+def test_cancelling_a_claimed_request_notifies_the_reviewer():
+    req_token = login("req@test.com")
+    rev_token = login("rev@test.com")
+
+    create_resp = client.post("/api/requests", headers=auth_headers(req_token), json={
+        "title": "Cancel after claim test", "amount": 30, "expense_date": "2026-01-05", "category": "other",
+    })
+    request_id = create_resp.json()["id"]
+    fake_jpeg = b"\xff\xd8\xff" + b"0" * 20
+    client.post(f"/api/requests/{request_id}/receipt", headers=auth_headers(req_token),
+                files={"file": ("r.jpg", io.BytesIO(fake_jpeg), "image/jpeg")})
+    client.post(f"/api/requests/{request_id}/submit", headers=auth_headers(req_token))
+    client.get(f"/api/requests/{request_id}", headers=auth_headers(rev_token))  # claims it
+
+    before_resp = client.get("/api/notifications", headers=auth_headers(rev_token))
+    before_count = before_resp.json()["total"]
+
+    cancel_resp = client.post(
+        f"/api/requests/{request_id}/cancel", headers=auth_headers(req_token),
+        json={"reason": "No longer needed"},
+    )
+    assert cancel_resp.status_code == 200
+
+    after_resp = client.get("/api/notifications", headers=auth_headers(rev_token))
+    after_data = after_resp.json()
+    assert after_data["total"] == before_count + 1
+    assert "cancelled" in after_data["items"][0]["message"]
 
 
 def test_double_submit_race_is_prevented():
@@ -346,6 +462,11 @@ def test_reviewer_opening_submitted_request_claims_it_as_under_review():
     actions_again = [h["action"] for h in rev_view_again.json()["history"]]
     assert actions_again.count("opened_for_review") == 1
 
+    # The requester was notified once when it got claimed, not duplicated on the repeat view
+    notif_resp = client.get("/api/notifications", headers=auth_headers(req_token))
+    claim_notifs = [n for n in notif_resp.json()["items"] if n["request_id"] == request_id]
+    assert len(claim_notifs) == 1
+
     # Still approvable/rejectable while under_review
     approve_resp = client.post(
         f"/api/requests/{request_id}/approve", headers=auth_headers(rev_token), json={}
@@ -432,6 +553,37 @@ def test_request_info_flow_and_resubmission():
         f"/api/requests/{request_id}/approve", headers=auth_headers(rev_token), json={}
     )
     assert approve_resp.status_code == 200
+
+
+def test_submitting_a_request_notifies_active_reviewers_and_admins():
+    req_token = login("req@test.com")
+    rev_token = login("rev@test.com")
+
+    create_resp = client.post("/api/requests", headers=auth_headers(req_token), json={
+        "title": "Needs a reviewer's eyes", "amount": 30, "expense_date": "2026-01-05", "category": "other",
+    })
+    request_id = create_resp.json()["id"]
+    fake_jpeg = b"\xff\xd8\xff" + b"0" * 20
+    client.post(f"/api/requests/{request_id}/receipt", headers=auth_headers(req_token),
+                files={"file": ("r.jpg", io.BytesIO(fake_jpeg), "image/jpeg")})
+
+    before_resp = client.get("/api/notifications", headers=auth_headers(rev_token))
+    before_count = before_resp.json()["total"]
+
+    client.post(f"/api/requests/{request_id}/submit", headers=auth_headers(req_token))
+
+    after_resp = client.get("/api/notifications", headers=auth_headers(rev_token))
+    after_data = after_resp.json()
+    assert after_data["total"] == before_count + 1
+    newest = after_data["items"][0]
+    assert "Needs a reviewer's eyes" in newest["message"]
+    assert newest["request_id"] == request_id
+    assert newest["is_read"] is False
+
+    # the requester doesn't notify themselves
+    own_resp = client.get("/api/notifications", headers=auth_headers(req_token))
+    own_messages = [n["message"] for n in own_resp.json()["items"]]
+    assert not any("Needs a reviewer's eyes" in m for m in own_messages)
 
 
 def test_notifications_are_paginated_and_scoped_to_the_user():
