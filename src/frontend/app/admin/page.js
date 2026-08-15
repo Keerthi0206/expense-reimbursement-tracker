@@ -16,7 +16,8 @@ function formatDate(iso) {
 
 function AdminPage() {
   const { user: currentUser } = useAuth();
-  const [users, setUsers] = useState([]);
+  const [data, setData] = useState(null);
+  const [page, setPage] = useState(1);
   const [error, setError] = useState("");
   const [busyId, setBusyId] = useState(null);
   const [expandedHistory, setExpandedHistory] = useState({}); // userId -> history[] | "loading"
@@ -31,16 +32,18 @@ function AdminPage() {
 
   const load = useCallback(async () => {
     try {
-      const data = await api.listUsers();
-      setUsers(data);
+      const result = await api.listUsers({ page, page_size: 10 });
+      setData(result);
     } catch (err) {
       setError(err.message);
     }
-  }, []);
+  }, [page]);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  const users = data?.items || [];
 
   async function handleRoleChange(userId, newRoleValue) {
     setBusyId(userId);
@@ -79,8 +82,8 @@ function AdminPage() {
     }
     setExpandedHistory((prev) => ({ ...prev, [userId]: "loading" }));
     try {
-      const history = await api.getUserHistory(userId);
-      setExpandedHistory((prev) => ({ ...prev, [userId]: history }));
+      const result = await api.getUserHistory(userId);
+      setExpandedHistory((prev) => ({ ...prev, [userId]: result.items }));
     } catch (err) {
       setError(err.message);
       setExpandedHistory((prev) => {
@@ -239,6 +242,24 @@ function AdminPage() {
             </div>
           );
         })
+      )}
+
+      {data && data.total_pages > 1 && (
+        <div className="pagination">
+          <button className="btn btn-sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
+            Previous
+          </button>
+          <span>
+            Page {data.page} of {data.total_pages} ({data.total} total)
+          </span>
+          <button
+            className="btn btn-sm"
+            disabled={page >= data.total_pages}
+            onClick={() => setPage((p) => p + 1)}
+          >
+            Next
+          </button>
+        </div>
       )}
     </>
   );

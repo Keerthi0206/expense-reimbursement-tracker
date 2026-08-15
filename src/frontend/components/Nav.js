@@ -14,8 +14,8 @@ export default function Nav() {
   useEffect(() => {
     if (!user) return;
     api
-      .notifications()
-      .then((data) => setUnreadCount(data.filter((n) => !n.is_read).length))
+      .notifications({ page_size: 100 })
+      .then((data) => setUnreadCount(data.items.filter((n) => !n.is_read).length))
       .catch(() => {
         // Non-critical — the badge just won't show if this fails.
       });

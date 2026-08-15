@@ -77,12 +77,22 @@ export const api = {
   dashboard: () => request("/api/requests/stats/dashboard"),
   listRequesters: () => request("/api/requests/meta/requesters"),
 
-  notifications: () => request("/api/notifications"),
+  notifications: (params = {}) => {
+    const qs = new URLSearchParams(
+      Object.entries(params).filter(([, v]) => v !== undefined && v !== "" && v !== null)
+    ).toString();
+    return request(`/api/notifications${qs ? `?${qs}` : ""}`);
+  },
   markNotificationRead: (id) => request(`/api/notifications/${id}/read`, { method: "PATCH" }),
 
-  listUsers: () => request("/api/admin/users"),
+  listUsers: (params = {}) => {
+    const qs = new URLSearchParams(
+      Object.entries(params).filter(([, v]) => v !== undefined && v !== "" && v !== null)
+    ).toString();
+    return request(`/api/admin/users${qs ? `?${qs}` : ""}`);
+  },
   getUser: (id) => request(`/api/admin/users/${id}`),
-  getUserHistory: (id) => request(`/api/admin/users/${id}/history`),
+  getUserHistory: (id) => request(`/api/admin/users/${id}/history?page_size=50`),
   createUser: (payload) => request("/api/admin/users", { method: "POST", body: payload }),
   updateUserRole: (id, role) => request(`/api/admin/users/${id}/role`, { method: "PATCH", body: { role } }),
   updateUserStatus: (id, is_active) =>

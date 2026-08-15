@@ -27,6 +27,8 @@ function ReviewerHome() {
   const [minAmount, setMinAmount] = useState("");
   const [maxAmount, setMaxAmount] = useState("");
   const [keyword, setKeyword] = useState("");
+  const [sortBy, setSortBy] = useState("created_at");
+  const [order, setOrder] = useState("desc");
   const [page, setPage] = useState(1);
   const [error, setError] = useState("");
 
@@ -51,6 +53,8 @@ function ReviewerHome() {
         min_amount: minAmount || undefined,
         max_amount: maxAmount || undefined,
         keyword: keyword || undefined,
+        sort_by: sortBy,
+        order,
         page,
         page_size: 10,
       });
@@ -58,7 +62,7 @@ function ReviewerHome() {
     } catch (err) {
       setError(err.message);
     }
-  }, [statusFilter, categoryFilter, requesterFilter, dateFrom, dateTo, minAmount, maxAmount, keyword, page]);
+  }, [statusFilter, categoryFilter, requesterFilter, dateFrom, dateTo, minAmount, maxAmount, keyword, sortBy, order, page]);
 
   useEffect(() => {
     loadDashboard();
@@ -78,6 +82,8 @@ function ReviewerHome() {
     setMinAmount("");
     setMaxAmount("");
     setKeyword("");
+    setSortBy("created_at");
+    setOrder("desc");
     setPage(1);
   }
 
@@ -230,6 +236,23 @@ function ReviewerHome() {
             setPage(1);
           }}
         />
+        <select
+          value={`${sortBy}:${order}`}
+          onChange={(e) => {
+            const [nextSortBy, nextOrder] = e.target.value.split(":");
+            setSortBy(nextSortBy);
+            setOrder(nextOrder);
+            setPage(1);
+          }}
+        >
+          <option value="created_at:desc">Newest first</option>
+          <option value="created_at:asc">Oldest first</option>
+          <option value="amount:desc">Amount: high to low</option>
+          <option value="amount:asc">Amount: low to high</option>
+          <option value="expense_date:desc">Expense date: newest</option>
+          <option value="expense_date:asc">Expense date: oldest</option>
+          <option value="title:asc">Title: A to Z</option>
+        </select>
         <button className="btn btn-sm" onClick={clearFilters}>
           Clear filters
         </button>
