@@ -31,6 +31,7 @@ body {
   color: var(--ink);
   font-family: "IBM Plex Sans", system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
 }
 
 h1,
@@ -161,6 +162,12 @@ textarea {
   width: 100%;
   margin: 0 auto;
   padding: 32px 24px 64px;
+}
+
+@media (max-width: 480px) {
+  .page {
+    padding: 24px 16px 48px;
+  }
 }
 
 .page-header {
@@ -399,6 +406,9 @@ textarea {
 .ledger-title {
   font-weight: 600;
   margin-bottom: 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .ledger-meta {
@@ -409,6 +419,16 @@ textarea {
 .ledger-amount {
   font-size: 1.05rem;
   font-weight: 600;
+  white-space: nowrap;
+}
+
+@media (max-width: 480px) {
+  .ledger-row {
+    flex-wrap: wrap;
+  }
+  .ledger-main {
+    flex-basis: 100%;
+  }
 }
 
 /* ---------- Dashboard stat tiles ---------- */
@@ -504,12 +524,14 @@ textarea {
 
 .user-name {
   font-weight: 600;
+  overflow-wrap: break-word;
 }
 
 .user-email {
   font-size: 0.82rem;
   color: var(--ink-soft);
   font-family: "IBM Plex Mono", monospace;
+  overflow-wrap: break-word;
 }
 
 .user-meta {

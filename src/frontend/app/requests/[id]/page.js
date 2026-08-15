@@ -360,7 +360,7 @@ function RequestDetail() {
             )}
             {editFieldErrors.receipt && <div className="field-error">{editFieldErrors.receipt}</div>}
           </div>
-          <div style={{ display: "flex", gap: 10 }}>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             <button className="btn" onClick={handleSaveDraftEdits} disabled={busy}>
               {busy ? "Saving…" : "Save without submitting"}
             </button>
@@ -422,7 +422,7 @@ function RequestDetail() {
                   required
                 />
               </div>
-              <div style={{ display: "flex", gap: 10 }}>
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                 <button type="submit" className="btn btn-reject" disabled={busy}>
                   Confirm rejection
                 </button>
@@ -443,7 +443,7 @@ function RequestDetail() {
                   required
                 />
               </div>
-              <div style={{ display: "flex", gap: 10 }}>
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                 <button type="submit" className="btn btn-primary" disabled={busy}>
                   Send request
                 </button>
@@ -497,7 +497,7 @@ function RequestDetail() {
                   required
                 />
               </div>
-              <div style={{ display: "flex", gap: 10 }}>
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                 <button type="submit" className="btn btn-reject" disabled={busy}>
                   Confirm reversal
                 </button>

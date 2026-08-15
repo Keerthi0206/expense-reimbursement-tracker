@@ -189,7 +189,7 @@ function NewRequestForm() {
             {fieldErrors.receipt && <div className="field-error">{fieldErrors.receipt}</div>}
           </div>
 
-          <div style={{ display: "flex", gap: 10 }}>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             <button type="button" className="btn" disabled={busy} onClick={handleSaveDraft}>
               {busy ? "Saving…" : "Save as draft"}
             </button>
