@@ -1,11 +1,15 @@
-from fastapi import APIRouter, Depends, HTTPException
+from typing import Optional
+
+import math
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.security import require_role, hash_password
 from app.models.models import User, RoleEnum, UserAccountHistory
 from app.schemas.schemas import (
-    UserOut, UserCreate, UserRoleUpdate, UserStatusUpdate, UserDetailOut, UserAccountHistoryOut,
+    UserOut, UserCreate, UserRoleUpdate, UserStatusUpdate, UserDetailOut,
+    UserAccountHistoryOut, PaginatedUsers, PaginatedUserHistory,
 )
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -19,12 +23,37 @@ def _log_account_history(db: Session, user_id: str, performed_by_id: str, action
     ))
 
 
-@router.get("/users", response_model=list[UserOut])
+@router.get("/users", response_model=PaginatedUsers)
 def list_users(
+    role: Optional[str] = None,
+    is_active: Optional[bool] = None,
+    sort_by: str = Query("created_at", pattern="^(created_at|name|email|role)$"),
+    order: str = Query("desc", pattern="^(asc|desc)$"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
     current_user: User = Depends(require_role(RoleEnum.admin.value)),
     db: Session = Depends(get_db),
 ):
-    return db.query(User).order_by(User.created_at.desc()).all()
+    query = db.query(User)
+
+    if role:
+        try:
+            role_enum = RoleEnum(role)
+        except ValueError:
+            raise HTTPException(status_code=422, detail=f"Invalid role filter: {role}")
+        query = query.filter(User.role == role_enum)
+    if is_active is not None:
+        query = query.filter(User.is_active == is_active)
+
+    total = query.count()
+    total_pages = max(1, math.ceil(total / page_size))
+
+    sort_column = getattr(User, sort_by)
+    sort_expr = sort_column.asc() if order == "asc" else sort_column.desc()
+
+    items = query.order_by(sort_expr).offset((page - 1) * page_size).limit(page_size).all()
+
+    return PaginatedUsers(items=items, page=page, page_size=page_size, total=total, total_pages=total_pages)
 
 
 @router.get("/users/{user_id}", response_model=UserDetailOut)
@@ -39,21 +68,27 @@ def get_user(
     return user
 
 
-@router.get("/users/{user_id}/history", response_model=list[UserAccountHistoryOut])
+@router.get("/users/{user_id}/history", response_model=PaginatedUserHistory)
 def get_user_history(
     user_id: str,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=100),
     current_user: User = Depends(require_role(RoleEnum.admin.value)),
     db: Session = Depends(get_db),
 ):
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    return (
-        db.query(UserAccountHistory)
-        .filter(UserAccountHistory.user_id == user_id)
-        .order_by(UserAccountHistory.timestamp.desc())
+    query = db.query(UserAccountHistory).filter(UserAccountHistory.user_id == user_id)
+    total = query.count()
+    total_pages = max(1, math.ceil(total / page_size))
+    items = (
+        query.order_by(UserAccountHistory.timestamp.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
         .all()
     )
+    return PaginatedUserHistory(items=items, page=page, page_size=page_size, total=total, total_pages=total_pages)
 
 
 @router.post("/users", response_model=UserOut, status_code=201)

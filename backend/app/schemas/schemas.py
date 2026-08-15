@@ -166,6 +166,49 @@ class PaginatedRequests(BaseModel):
     total_pages: int
 
 
+class PaginatedUsers(BaseModel):
+    items: List[UserOut]
+    page: int
+    page_size: int
+    total: int
+    total_pages: int
+
+
+class NotificationOut(BaseModel):
+    id: str
+    message: str
+    is_read: bool
+    request_id: Optional[str]
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class PaginatedNotifications(BaseModel):
+    items: List[NotificationOut]
+    page: int
+    page_size: int
+    total: int
+    total_pages: int
+
+
+class PaginatedHistory(BaseModel):
+    items: List[HistoryEntryOut]
+    page: int
+    page_size: int
+    total: int
+    total_pages: int
+
+
+class PaginatedUserHistory(BaseModel):
+    items: List[UserAccountHistoryOut]
+    page: int
+    page_size: int
+    total: int
+    total_pages: int
+
+
 class DashboardSummary(BaseModel):
     total_requested: float
     total_approved: float
