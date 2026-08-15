@@ -4,7 +4,7 @@
 
 Two layers of testing were used:
 
-1. **Automated tests** (`backend/tests/test_workflow.py`, `test_admin.py`, and `test_error_handling_and_authorization.py`) — 49 pytest cases run against the real FastAPI app via `TestClient`, sharing one isolated SQLite test database managed by `tests/conftest.py` for the whole session.
+1. **Automated tests** (`backend/tests/test_workflow.py`, `test_admin.py`, and `test_error_handling_and_authorization.py`) — 54 pytest cases run against the real FastAPI app via `TestClient`, sharing one isolated SQLite test database managed by `tests/conftest.py` for the whole session.
 2. **Manual end-to-end smoke testing** via curl against a running server, exercising the exact scenarios in the hackathon's "Minimum Demonstration Scenario" — done during development to catch integration issues (e.g. a JSON-serialization bug in the validation-error handler, a test-isolation bug where two test files silently shared one SQLite engine, and a genuine race condition in status transitions) that unit tests alone didn't surface.
 
 ## Automated test results
@@ -12,28 +12,13 @@ Two layers of testing were used:
 ```
 tests/test_admin.py::test_non_admin_cannot_list_users PASSED
 tests/test_admin.py::test_admin_can_list_users_with_full_fields PASSED
+tests/test_admin.py::test_admin_users_list_supports_pagination_filtering_and_sorting PASSED
 tests/test_admin.py::test_admin_can_change_a_users_role_and_it_is_logged PASSED
 tests/test_admin.py::test_admin_cannot_change_their_own_role PASSED
 tests/test_admin.py::test_admin_can_deactivate_and_reactivate_a_user_with_history PASSED
 tests/test_admin.py::test_admin_cannot_deactivate_self PASSED
 tests/test_admin.py::test_creating_a_user_is_logged_in_history PASSED
 tests/test_admin.py::test_non_admin_cannot_view_or_modify_user_history PASSED
-tests/test_workflow.py::test_login_wrong_password_returns_401 PASSED
-tests/test_workflow.py::test_login_unknown_email_returns_401_not_500 PASSED
-tests/test_workflow.py::test_create_request_requires_auth PASSED
-tests/test_workflow.py::test_negative_amount_rejected PASSED
-tests/test_workflow.py::test_future_date_rejected PASSED
-tests/test_workflow.py::test_missing_category_rejected PASSED
-tests/test_workflow.py::test_full_workflow_create_to_paid PASSED
-tests/test_workflow.py::test_double_submit_race_is_prevented PASSED
-tests/test_workflow.py::test_reject_requires_reason PASSED
-tests/test_workflow.py::test_requester_cannot_see_others_requests PASSED
-tests/test_workflow.py::test_approved_request_can_be_reverted_but_not_after_paid PASSED
-tests/test_workflow.py::test_reviewer_opening_submitted_request_claims_it_as_under_review PASSED
-tests/test_workflow.py::test_request_info_flow_and_resubmission PASSED
-tests/test_workflow.py::test_dashboard_totals_are_accurate PASSED
-tests/test_workflow.py::test_search_and_filter PASSED
-tests/test_workflow.py::test_deactivated_account_cannot_log_in PASSED
 
 tests/test_error_handling_and_authorization.py::TestInvalidWorkflowActions::test_cannot_approve_a_draft PASSED
 tests/test_error_handling_and_authorization.py::TestInvalidWorkflowActions::test_cannot_reject_a_draft PASSED
@@ -53,6 +38,7 @@ tests/test_error_handling_and_authorization.py::TestUnauthorizedActions::test_re
 tests/test_error_handling_and_authorization.py::TestUnauthorizedActions::test_reviewer_cannot_create_a_request PASSED
 tests/test_error_handling_and_authorization.py::TestUnauthorizedActions::test_non_admin_blocked_from_admin_endpoint PASSED
 tests/test_error_handling_and_authorization.py::TestUnauthorizedActions::test_requester_cannot_download_someone_elses_receipt PASSED
+tests/test_error_handling_and_authorization.py::TestUnauthorizedActions::test_admin_cannot_approve_reject_or_pay_their_own_request PASSED
 tests/test_error_handling_and_authorization.py::TestGracefulErrorHandling::test_malformed_json_body_does_not_crash PASSED
 tests/test_error_handling_and_authorization.py::TestGracefulErrorHandling::test_sql_injection_style_id_is_treated_as_literal_data PASSED
 tests/test_error_handling_and_authorization.py::TestGracefulErrorHandling::test_sql_injection_style_string_in_title_is_stored_as_plain_text PASSED
@@ -61,7 +47,27 @@ tests/test_error_handling_and_authorization.py::TestGracefulErrorHandling::test_
 tests/test_error_handling_and_authorization.py::TestGracefulErrorHandling::test_oversized_field_is_rejected_not_crashed PASSED
 tests/test_error_handling_and_authorization.py::TestGracefulErrorHandling::test_unhandled_error_response_never_contains_secret_values PASSED
 
-======================= 49 passed in 22.88s =======================
+tests/test_workflow.py::test_login_wrong_password_returns_401 PASSED
+tests/test_workflow.py::test_login_unknown_email_returns_401_not_500 PASSED
+tests/test_workflow.py::test_create_request_requires_auth PASSED
+tests/test_workflow.py::test_negative_amount_rejected PASSED
+tests/test_workflow.py::test_future_date_rejected PASSED
+tests/test_workflow.py::test_missing_category_rejected PASSED
+tests/test_workflow.py::test_full_workflow_create_to_paid PASSED
+tests/test_workflow.py::test_double_submit_race_is_prevented PASSED
+tests/test_workflow.py::test_reject_requires_reason PASSED
+tests/test_workflow.py::test_requester_cannot_see_others_requests PASSED
+tests/test_workflow.py::test_approved_request_can_be_reverted_but_not_after_paid PASSED
+tests/test_workflow.py::test_reviewer_opening_submitted_request_claims_it_as_under_review PASSED
+tests/test_workflow.py::test_request_info_flow_and_resubmission PASSED
+tests/test_workflow.py::test_notifications_are_paginated_and_scoped_to_the_user PASSED
+tests/test_workflow.py::test_dashboard_totals_are_accurate PASSED
+tests/test_workflow.py::test_search_and_filter PASSED
+tests/test_workflow.py::test_sorting_requests_by_amount PASSED
+tests/test_workflow.py::test_request_history_has_its_own_endpoint PASSED
+tests/test_workflow.py::test_deactivated_account_cannot_log_in PASSED
+
+======================= 54 passed in 25.23s =======================
 ```
 
 Run it yourself: `cd backend && pytest -v`
@@ -91,6 +97,7 @@ These three requirements got dedicated attention beyond the general workflow tes
 |---|---|
 | `test_non_admin_cannot_list_users` | A requester/reviewer token gets 403 from `/api/admin/users` |
 | `test_admin_can_list_users_with_full_fields` | Every field the admin brief requires (email, role, status, created date) is present in the response |
+| `test_admin_users_list_supports_pagination_filtering_and_sorting` | `/api/admin/users` returns the same paginated shape as requests (`items`/`page`/`page_size`/`total`/`total_pages`); filters correctly by `role` and `is_active`; sorts by `name` ascending correctly; an invalid `role` filter value returns 422 |
 | `test_admin_can_change_a_users_role_and_it_is_logged` | Role change succeeds and writes a `role_changed` history entry with the correct previous/new values and who performed it |
 | `test_admin_cannot_change_their_own_role` | Self-role-change is blocked (400) so an admin can't accidentally lock themselves out |
 | `test_admin_can_deactivate_and_reactivate_a_user_with_history` | Deactivation blocks that user's login (403) with the correct message; reactivation restores it; both actions are logged |
@@ -112,6 +119,9 @@ These three requirements got dedicated attention beyond the general workflow tes
 | `test_request_info_flow_and_resubmission` | Requester can't request info on their own request (403); empty message rejected (422); reviewer's request moves status to `changes_requested` with the message stored; a second request-info call is blocked (400, wrong status); owner can edit while in this state; resubmitting clears the message, logs `resubmitted`, and returns to `submitted`; the request is then normally approvable |
 | `test_dashboard_totals_are_accurate` | Dashboard endpoint returns well-formed totals and per-status counts |
 | `test_search_and_filter` | Category filter returns only matching results; pagination metadata is present |
+| `test_sorting_requests_by_amount` | `sort_by=amount` with `order=asc`/`desc` returns results in correct numeric order; an invalid `sort_by` column name returns 422 rather than a server error |
+| `test_request_history_has_its_own_endpoint` | `GET /api/requests/{id}/history` returns the action log directly (not just nested in the detail response) as a paginated object; a user with no access to the request gets 403; a reviewer can view any request's history |
+| `test_notifications_are_paginated_and_scoped_to_the_user` | Notifications endpoint returns the same paginated shape as every other list endpoint; `page_size=1` actually limits results to 1; a reviewer's notifications never appear in a requester's list and vice versa |
 | `test_deactivated_account_cannot_log_in` | Non-admin users are blocked from the admin-only `/api/admin/users` endpoint (403) |
 
 ## Manual verification performed during development
@@ -139,6 +149,12 @@ When a second test file (`test_admin.py`) was added, running the full suite (`py
 While verifying the "requests should not accidentally be submitted twice" requirement, automated tests alone weren't enough to catch this — they exercise one request at a time. Manually firing several genuinely simultaneous `curl` requests at `/submit` (via shell backgrounding) showed 2 of 5 succeeding, both writing a `submitted` history entry for the same request. The cause: the original code read the request's status, checked it in Python, then wrote the new status back — two concurrent requests could both pass the check before either one's write landed.
 
 Fixed by making every status transition (submit, approve, reject, request-info, mark-paid, and the reviewer-claim transition) a single conditional database `UPDATE` — `WHERE id = ... AND status IN (allowed statuses)` — checking the affected row count rather than trusting a prior read. Verified the fix the same way the bug was found: firing 10 simultaneous requests at `/submit` and separately at `/mark-paid` (the highest-stakes one — a race there would mean double payment) and confirming exactly one succeeds each time. A permanent automated regression test, `test_double_submit_race_is_prevented`, now covers this with real Python threads so it can't silently regress.
+
+## Pagination gaps found by re-auditing against the brief
+
+The brief names four resources that should paginate: reimbursement requests, users, notifications, and history records. Requests already paginated correctly, but three others didn't: `GET /api/notifications` and `GET /api/admin/users/{id}/history` both returned every row unbounded, and the admin users list had pagination on the backend with no Previous/Next controls in the UI at all. Fixed all three — notifications and both history endpoints now return the same consistent `{items, page, page_size, total, total_pages}` shape used everywhere else, and real pagination UI was added to the admin page and notifications page.
+
+One deliberate judgment call, made explicit rather than left silent: a single request's history and a single user's account history are naturally small and bounded — a handful of status changes, rarely more than a dozen. Both got paginated backends (for correctness and consistency), but the frontend fetches one generous page for these two specific views rather than building visible Previous/Next controls, since forcing pagination onto a short list would hurt the UX more than it would help. The two genuinely unbounded lists — the full reviewer request queue and the admin user directory — get real, visible pagination controls.
 
 ## Known gap
 

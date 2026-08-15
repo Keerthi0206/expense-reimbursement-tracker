@@ -16,12 +16,14 @@ A full-stack reimbursement tracker built for the CDF SDE Hackathon. Requesters c
 - Admin console: view all users (email, role, status, creation date), assign/change roles, activate/deactivate accounts, full audit history of who changed what and when — an admin can't change their own role or deactivate themselves
 - Receipt upload with real content-type validation (checks file bytes, not just extension), 5MB limit, JPEG/PNG/PDF only
 - Form + backend validation: amount > 0, no future dates, required fields, required rejection reason
-- Full filtering on the reviewer dashboard — status, category, requester, expense date range, amount range, and keyword search — plus pagination
+- Full filtering, sorting (by date/amount/expense date/title, either direction), and pagination on the reviewer dashboard — status, category, requester, expense date range, amount range, keyword search
+- Consistent, documented REST API (see `/docs` for live Swagger) covering users, requests, reviews, notifications, and request history, each with a dedicated endpoint — including standalone `GET /api/requests/{id}/history` and `GET /api/admin/users/{id}/history`, not just nested inside detail responses
+- Server-side pagination on every list endpoint that can realistically grow — requests, admin users, notifications, and both history endpoints — all returning the same consistent shape (`items`/`page`/`page_size`/`total`/`total_pages`), with real Previous/Next navigation in the UI on the reviewer dashboard, admin page, and notifications page
 - Dashboard totals (requested / approved / pending / paid) and counts by status
 - Full request history / audit trail
 - In-app notifications on status changes, with a dedicated notifications page (unread badge in the nav, mark-as-read individually or all at once, links back to the related request)
 - JWT auth, hashed passwords, secrets via environment variables, no stack traces leaked to the client
-- Automated test suite (`backend/tests/`, 49 tests across `test_workflow.py`, `test_admin.py`, and `test_error_handling_and_authorization.py`, covering the full reimbursement workflow, validation, RBAC, approval reversal, the reviewer-claims-request transition, request-info/resubmission, admin user/role/status management with audit history, a real concurrency race condition found and fixed during development, and dedicated coverage of invalid-workflow-action prevention, unauthorized-action handling, and graceful error handling — including SQL-injection-style input)
+- Automated test suite (`backend/tests/`, 54 tests across `test_workflow.py`, `test_admin.py`, and `test_error_handling_and_authorization.py`, covering the full reimbursement workflow, validation, RBAC, approval reversal, the reviewer-claims-request transition, request-info/resubmission, admin user/role/status management with audit history, sorting and pagination on both list endpoints, the standalone request-history endpoint, a real concurrency race condition found and fixed during development, and dedicated coverage of invalid-workflow-action prevention, unauthorized-action handling, and graceful error handling — including SQL-injection-style input)
 - Fictional seed data covering every workflow state
 
 ## Tech stack
