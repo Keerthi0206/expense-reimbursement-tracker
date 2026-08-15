@@ -1,80 +1,46 @@
-# Planning Document
+Planning Document
 
-> Complete this document **before writing any code**. This is part of the evaluation.
-> Your intent here will be compared against what you actually built in `docs/architecture.md`.
+Note: the original planning.md template provided in this repo was built for a different hackathon (it asked about ML model selection, detection categories, and precision/recall/F1 — shape of a PII-detection project). Those sections don't apply to a CRUD reimbursement tracker, so they've been replaced below with sections that match this project's actual requirements.
 
----
+Tech Stack
 
-## Tech Stack
+Framework / Language: FastAPI (Python) backend, Next.js (App Router) frontend, SQLite database.
 
-**Framework / Language:**
+Why this stack: FastAPI gives automatic request validation via Pydantic and free OpenAPI docs, which matters for the "API design" and "documentation" rubric items. SQLite needs no setup for a 5-day window and the code reads DATABASE_URL from the environment, so moving to Postgres later is a config change. Next.js App Router keeps the requester/reviewer/detail pages organized by file-based routing without needing a separate router library.
 
-> Why did you choose this stack?
+Key libraries: SQLAlchemy (ORM), python-jose (JWT), passlib/bcrypt (password hashing), python-multipart (file uploads), pytest + httpx (testing).
 
-**Key Libraries:**
+Data Model
+User: id, name, email, hashed_password, role (requester/reviewer/admin), is_active, created_at
+ReimbursementRequest: id, title, amount, expense_date, category, description, status, requester_id, reviewer_id, receipt_filename/path, rejection_reason, reviewer_comment, timestamps
+RequestHistory: append-only audit log of every action (create/submit/approve/reject/paid)
+Notification: per-user, tied to a request, read/unread
+Workflow & Status Design
 
----
+Draft → Submitted → (Under Review, optional/merged with Submitted) → Approved/Rejected → Paid
 
-## Model
+Submitted and Under Review are treated as effectively the same reviewer-visible state per the hackathon's own guidance that these may be combined. Every transition is validated server-side: a request can't be approved twice, a rejected request can't be marked Paid, and a requester can never approve, reject, or pay their own request (enforced in the route handlers, not just hidden in the UI).
 
-**Which model will you use?**
+Roles
+Requester: create/edit drafts, attach receipts, submit, view own requests + history
+Reviewer: view all requests, approve/reject (with required reason)/mark paid, search/filter, dashboard
+Admin: user management (API implemented; no UI built — see limitations)
+Testing Plan
 
-> Pretrained is fine, training is optional. Choosing and justifying your model is
-> part of the challenge.
+Automated pytest suite (backend/tests/test_workflow.py) covering: auth failures, field validation (negative amount, future date, missing category), the full create→paid happy path, rejection requiring a reason, cross-user access isolation, dashboard math, and search/filter. Manual smoke testing via curl against a live server for the exact "Minimum Demonstration Scenario" the hackathon lists, plus a full frontend build with zero errors and a live frontend-to-backend CORS/login check. See docs/testing.md for full results.
 
-**Where does it run (local / in-browser / hosted)?**
+Phases & Priorities
+Phase	Target Dates	Goals
+1 — Plan & scaffold	Aug 14	Confirm data model, roles, repo structure, planning doc
+2 — Requester flow	Aug 14–15	Auth, request form, validation, receipt upload, persistence
+3 — Reviewer flow	Aug 15–16	Reviewer dashboard, approve/reject/paid, history, search/filter
+4 — Secure & test	Aug 16–17	RBAC enforcement, dashboard totals, automated tests, seed data
+5 — Polish & submit	Aug 17–19	Deploy, docs, walkthrough video, final submission check
+What I'll Cut If Time Is Short
 
-> On-device inference is preferred for privacy. Note the tradeoff if you use a
-> hosted model.
+First to drop: the admin UI (API stays, no screen). Next: notifications UI (data still generated server-side). Last thing to cut: the core Create→Submit→Review→Approve/Reject→Paid workflow, backend validation, and RBAC — these are the 30%+10%+10% of the rubric that matter most and won't be sacrificed for polish.
 
-**Any regex helpers for structured data (cards, API keys, IDs)?**
-
----
-
-## Detection Categories
-
-> Which of the six categories will you detect (at least four)? Note whether the
-> model or a rule handles each.
-
-| Category | Detect? | Model or rule? |
-|----------|---------|----------------|
-| Names & contact information | | |
-| Government or financial identifiers | | |
-| Passwords, API keys or credentials | | |
-| Medical or sensitive personal information | | |
-| Employee, client or volunteer information | | |
-| Confidential organizational or project information | | |
-
----
-
-## Evaluation Plan
-
-> How will you measure accuracy? You must report precision / recall / F1 on at
-> least 10 labelled synthetic cases, including safe ones.
-
-**Test data source (synthetic):**
-
-**How you will label and score it:**
-
----
-
-## Phases & Priorities
-
-| Phase | Target Dates | Goals |
-|-------|-------------|-------|
-| 1 | | |
-| 2 | | |
-| 3 | | |
-
----
-
-## What I'll Cut If Time Is Short
-
-> Be honest. What's the first thing you'd drop, and what's the last?
-
----
-
-## Open Questions / Risks
-
-> Any uncertainties or technical risks? (e.g. model size and load time, avoiding
-> over-redaction on safe text, running the model on-device.)
+Open Questions / Risks
+Receipt storage on deploy: local disk storage won't persist across redeploys on most free hosting tiers. Mitigation: document this as a known limitation; object storage would be the production fix.
+SQLite on Render's free tier: ephemeral filesystem could reset the DB on redeploy. Mitigation: reseed script is idempotent and fast; acceptable for a demo, flagged as a limitation for real use.
+5-day timeline vs. Tier 2 stretch goals: prioritized a complete, tested Tier 1 over partial Tier 2 features, per the hackathon's own judging guidance.
