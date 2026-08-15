@@ -17,6 +17,7 @@ from app.models.models import (
 from app.schemas.schemas import (
     RequestCreate, RequestUpdate, RequestOut, RequestDetailOut, RequesterOut,
     PaginatedRequests, RejectDecision, ReviewDecision, InfoRequest, DashboardSummary,
+    HistoryEntryOut, PaginatedHistory,
 )
 
 router = APIRouter(prefix="/api/requests", tags=["requests"])
@@ -213,6 +214,8 @@ def list_requests(
     min_amount: Optional[float] = None,
     max_amount: Optional[float] = None,
     keyword: Optional[str] = None,
+    sort_by: str = Query("created_at", pattern="^(created_at|amount|expense_date|status|title)$"),
+    order: str = Query("desc", pattern="^(asc|desc)$"),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     current_user: User = Depends(get_current_user),
@@ -257,8 +260,12 @@ def list_requests(
 
     total = query.count()
     total_pages = max(1, math.ceil(total / page_size))
+
+    sort_column = getattr(ReimbursementRequest, sort_by)
+    sort_expr = sort_column.asc() if order == "asc" else sort_column.desc()
+
     items = (
-        query.order_by(ReimbursementRequest.created_at.desc())
+        query.order_by(sort_expr)
         .offset((page - 1) * page_size)
         .limit(page_size)
         .all()
@@ -296,6 +303,27 @@ def get_request(
         db.refresh(req)
 
     return req
+
+
+@router.get("/{request_id}/history", response_model=PaginatedHistory)
+def get_request_history(
+    request_id: str,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=100),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _get_owned_or_403(db, request_id, current_user)
+    query = db.query(RequestHistory).filter(RequestHistory.request_id == request_id)
+    total = query.count()
+    total_pages = max(1, math.ceil(total / page_size))
+    items = (
+        query.order_by(RequestHistory.timestamp.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+        .all()
+    )
+    return PaginatedHistory(items=items, page=page, page_size=page_size, total=total, total_pages=total_pages)
 
 
 # ---------- Review actions (Reviewer / Admin only) ----------
