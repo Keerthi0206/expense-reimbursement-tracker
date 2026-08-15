@@ -58,12 +58,41 @@ def test_admin_can_list_users_with_full_fields():
     admin_token, _ = login("admin1@test.com")
     resp = client.get("/api/admin/users", headers=auth_headers(admin_token))
     assert resp.status_code == 200
-    users = resp.json()
+    data = resp.json()
+    users = data["items"]
+    assert data["total"] >= 3
     assert len(users) >= 3
     # Confirm every field the admin brief asks for is present
     sample = users[0]
     for field in ("id", "name", "email", "role", "is_active", "created_at"):
         assert field in sample
+
+
+def test_admin_users_list_supports_pagination_filtering_and_sorting():
+    admin_token, _ = login("admin1@test.com")
+
+    page_resp = client.get("/api/admin/users?page=1&page_size=2", headers=auth_headers(admin_token))
+    assert page_resp.status_code == 200
+    page_data = page_resp.json()
+    assert page_data["page"] == 1
+    assert page_data["page_size"] == 2
+    assert len(page_data["items"]) <= 2
+
+    role_resp = client.get("/api/admin/users?role=admin", headers=auth_headers(admin_token))
+    assert role_resp.status_code == 200
+    assert all(u["role"] == "admin" for u in role_resp.json()["items"])
+
+    active_resp = client.get("/api/admin/users?is_active=true", headers=auth_headers(admin_token))
+    assert active_resp.status_code == 200
+    assert all(u["is_active"] is True for u in active_resp.json()["items"])
+
+    sorted_resp = client.get("/api/admin/users?sort_by=name&order=asc", headers=auth_headers(admin_token))
+    assert sorted_resp.status_code == 200
+    names = [u["name"] for u in sorted_resp.json()["items"]]
+    assert names == sorted(names)
+
+    bad_role_resp = client.get("/api/admin/users?role=not-a-role", headers=auth_headers(admin_token))
+    assert bad_role_resp.status_code == 422
 
 
 def test_admin_can_change_a_users_role_and_it_is_logged():
@@ -81,7 +110,7 @@ def test_admin_can_change_a_users_role_and_it_is_logged():
         f"/api/admin/users/{requester_id}/history", headers=auth_headers(admin_token)
     )
     assert history_resp.status_code == 200
-    entries = history_resp.json()
+    entries = history_resp.json()["items"]
     role_change = next(e for e in entries if e["action"] == "role_changed")
     assert role_change["previous_value"] == "requester"
     assert role_change["new_value"] == "reviewer"
@@ -128,7 +157,7 @@ def test_admin_can_deactivate_and_reactivate_a_user_with_history():
     history_resp = client.get(
         f"/api/admin/users/{reviewer_id}/history", headers=auth_headers(admin_token)
     )
-    actions = [e["action"] for e in history_resp.json()]
+    actions = [e["action"] for e in history_resp.json()["items"]]
     assert "deactivated" in actions
     assert "activated" in actions
 
@@ -154,7 +183,7 @@ def test_creating_a_user_is_logged_in_history():
     history_resp = client.get(
         f"/api/admin/users/{new_user_id}/history", headers=auth_headers(admin_token)
     )
-    actions = [e["action"] for e in history_resp.json()]
+    actions = [e["action"] for e in history_resp.json()["items"]]
     assert "created" in actions
 
 

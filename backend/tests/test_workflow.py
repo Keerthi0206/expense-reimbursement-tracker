@@ -434,6 +434,39 @@ def test_request_info_flow_and_resubmission():
     assert approve_resp.status_code == 200
 
 
+def test_notifications_are_paginated_and_scoped_to_the_user():
+    req_token = login("req@test.com")
+    rev_token = login("rev@test.com")
+
+    for i in range(3):
+        create_resp = client.post("/api/requests", headers=auth_headers(req_token), json={
+            "title": f"Notif test {i}", "amount": 10, "expense_date": "2026-01-05", "category": "other",
+        })
+        request_id = create_resp.json()["id"]
+        fake_jpeg = b"\xff\xd8\xff" + b"0" * 20
+        client.post(f"/api/requests/{request_id}/receipt", headers=auth_headers(req_token),
+                    files={"file": (f"r{i}.jpg", io.BytesIO(fake_jpeg), "image/jpeg")})
+        client.post(f"/api/requests/{request_id}/submit", headers=auth_headers(req_token))
+        client.post(f"/api/requests/{request_id}/approve", headers=auth_headers(rev_token), json={})
+
+    all_resp = client.get("/api/notifications", headers=auth_headers(req_token))
+    assert all_resp.status_code == 200
+    body = all_resp.json()
+    assert set(body.keys()) == {"items", "page", "page_size", "total", "total_pages"}
+    assert body["total"] >= 3
+
+    small_page_resp = client.get("/api/notifications?page=1&page_size=1", headers=auth_headers(req_token))
+    small_body = small_page_resp.json()
+    assert len(small_body["items"]) == 1
+    assert small_body["page_size"] == 1
+
+    # a different user's notifications are never mixed in
+    rev_notif_resp = client.get("/api/notifications", headers=auth_headers(rev_token))
+    rev_messages = [n["message"] for n in rev_notif_resp.json()["items"]]
+    req_messages = [n["message"] for n in body["items"]]
+    assert not set(rev_messages) & set(req_messages)
+
+
 def test_dashboard_totals_are_accurate():
     token = login("req@test.com")
     dash_resp = client.get("/api/requests/stats/dashboard", headers=auth_headers(token))
@@ -451,6 +484,60 @@ def test_search_and_filter():
     data = resp.json()
     assert all(item["category"] == "meals" for item in data["items"])
     assert data["page"] == 1
+
+
+def test_sorting_requests_by_amount():
+    token = login("req@test.com")
+
+    for amount in (15, 300, 75):
+        client.post("/api/requests", headers=auth_headers(token), json={
+            "title": f"Sort test {amount}", "amount": amount,
+            "expense_date": "2026-01-05", "category": "other",
+        })
+
+    asc_resp = client.get(
+        "/api/requests?keyword=Sort test&sort_by=amount&order=asc&page_size=50",
+        headers=auth_headers(token),
+    )
+    assert asc_resp.status_code == 200
+    amounts = [item["amount"] for item in asc_resp.json()["items"]]
+    assert amounts == sorted(amounts)
+
+    desc_resp = client.get(
+        "/api/requests?keyword=Sort test&sort_by=amount&order=desc&page_size=50",
+        headers=auth_headers(token),
+    )
+    amounts_desc = [item["amount"] for item in desc_resp.json()["items"]]
+    assert amounts_desc == sorted(amounts_desc, reverse=True)
+
+    bad_sort_resp = client.get("/api/requests?sort_by=not_a_real_column", headers=auth_headers(token))
+    assert bad_sort_resp.status_code == 422
+
+
+def test_request_history_has_its_own_endpoint():
+    req_token = login("req@test.com")
+    rev_token = login("rev@test.com")
+
+    create_resp = client.post("/api/requests", headers=auth_headers(req_token), json={
+        "title": "History endpoint test", "amount": 20, "expense_date": "2026-01-05", "category": "other",
+    })
+    request_id = create_resp.json()["id"]
+
+    history_resp = client.get(f"/api/requests/{request_id}/history", headers=auth_headers(req_token))
+    assert history_resp.status_code == 200
+    body = history_resp.json()
+    assert set(body.keys()) == {"items", "page", "page_size", "total", "total_pages"}
+    actions = [h["action"] for h in body["items"]]
+    assert "created" in actions
+
+    # a user with no access to the request can't see its history either
+    other_token = login("req2@test.com")
+    forbidden_resp = client.get(f"/api/requests/{request_id}/history", headers=auth_headers(other_token))
+    assert forbidden_resp.status_code == 403
+
+    # reviewers can see any request's history
+    rev_resp = client.get(f"/api/requests/{request_id}/history", headers=auth_headers(rev_token))
+    assert rev_resp.status_code == 200
 
 
 def test_deactivated_account_cannot_log_in():
