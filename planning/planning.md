@@ -77,6 +77,10 @@ editable drafts/resubmission first (directly strengthens the core workflow), the
 history audit trail, then the expanded test suite — CSV export, email notifications and a
 Dockerized setup are the first three Tier 2 ideas to drop entirely.
 
+Beyond Tier 2, every Tier 1 requirement — including Administrator functionality and
+Notifications both listed under Tier 1 in the hackathon brief is treated as non-negotiable.
+The full Tier 1 scope will be completed and tested before any further cuts are considered.
+
 ## Open Questions / Risks
 
 - **Receipt storage on deploy**: local disk storage won't persist across redeploys on most free
