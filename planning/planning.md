@@ -40,7 +40,7 @@ in the UI).
 
 - **Requester**: create/edit drafts, attach receipts, submit, view own requests + history
 - **Reviewer**: view all requests, approve/reject (with required reason)/mark paid, search/filter, dashboard
-- **Admin**: user management (API implemented; no UI built — see limitations)
+- **Admin**: user management (API implemented, no UI built, see limitations)
 
 ## Testing Plan
 
