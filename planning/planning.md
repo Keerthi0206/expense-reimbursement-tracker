@@ -32,8 +32,8 @@ python-multipart (file uploads), pytest + httpx (testing).
 
 Submitted and Under Review are treated as effectively the same reviewer-visible state per the
 hackathon's own guidance that these may be combined. Every transition is validated server-side:
-a request can't be approved twice, a rejected request can't be marked Paid, and a requester can
-never approve, reject, or pay their own request (enforced in the route handlers, not just hidden
+a request can't be approved twice, a rejected request can't be marked Paid and a requester can
+never approve, reject or pay their own request (enforced in the route handlers, not just hidden
 in the UI).
 
 ## Roles
