@@ -46,9 +46,9 @@ in the UI).
 
 Automated pytest suite (`backend/tests/test_workflow.py`) covering: auth failures, field
 validation (negative amount, future date, missing category), the full create→paid happy path,
-rejection requiring a reason, cross-user access isolation, dashboard math, and search/filter.
+rejection requiring a reason, cross-user access isolation, dashboard math and search/filter.
 Manual smoke testing via curl against a live server for the exact "Minimum Demonstration
-Scenario" the hackathon lists, plus a full frontend build with zero errors and a live
+Scenario" the hackathon lists plus a full frontend build with zero errors and a live
 frontend-to-backend CORS/login check. See `docs/testing.md` for full results.
 
 ## Phases & Priorities
