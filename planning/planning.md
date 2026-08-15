@@ -1,9 +1,9 @@
 # Planning Document
 
 > Note: the original `planning.md` template provided in this repo was built for a different
-> hackathon (it asked about ML model selection, detection categories, and precision/recall/F1 —
+> hackathon (it asked about ML model selection, detection categories and precision/recall/F1
 > shape of a PII-detection project). Those sections don't apply to a CRUD reimbursement tracker,
-> so they've been replaced below with sections that match this project's actual requirements.
+> so they have been replaced below with sections that match this project's actual requirements.
 
 ## Tech Stack
 
