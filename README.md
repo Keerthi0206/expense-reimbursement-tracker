@@ -11,6 +11,8 @@ A full-stack reimbursement tracker built for the CDF SDE Hackathon. Requesters c
 - Reviewer "claim" flow: opening a submitted request moves it to Under Review; a `status=pending` filter alias keeps it visible in the review queue either way
 - Request more information: a reviewer can send a submitted request back with a required message instead of approving or rejecting outright — the requester edits and resubmits it, cleanly modeled as its own status (`changes_requested`), not a bolt-on comment
 - Approval reversal: a reviewer can reject an approved-but-unpaid request with a reason to correct a mistake — locked out entirely once the request is Paid
+- Cancel: a requester can cancel their own request any time before a reviewer approves or rejects it, with an optional reason — implemented as a real `cancelled` status (not a hard delete), so the record and its history stay intact rather than disappearing from the audit trail
+- Light/dark theme, toggleable from the nav or login page, remembered across visits — every color in the app comes from a shared token system, not hardcoded per component, so the whole UI (including status stamps, buttons, and the always-dark topbar "cover") switches consistently rather than a partial reskin
 - Every status transition (submit, approve, reject, mark paid, etc.) is a single atomic database update, not a read-then-write — verified safe against real concurrent requests (double-clicks, multiple tabs), not just sequential ones
 - Backend-enforced role-based access control (requester / reviewer / admin) — requesters cannot approve, reject, or pay their own (or anyone's) requests
 - Admin console: view all users (email, role, status, creation date), assign/change roles, activate/deactivate accounts, full audit history of who changed what and when — an admin can't change their own role or deactivate themselves
@@ -21,9 +23,9 @@ A full-stack reimbursement tracker built for the CDF SDE Hackathon. Requesters c
 - Server-side pagination on every list endpoint that can realistically grow — requests, admin users, notifications, and both history endpoints — all returning the same consistent shape (`items`/`page`/`page_size`/`total`/`total_pages`), with real Previous/Next navigation in the UI on the reviewer dashboard, admin page, and notifications page
 - Dashboard totals (requested / approved / pending / paid) and counts by status
 - Full request history / audit trail
-- In-app notifications on status changes, with a dedicated notifications page (unread badge in the nav, mark-as-read individually or all at once, links back to the related request)
+- In-app notifications on every meaningful status change — including reviewers/admins getting notified the moment a new request is submitted, not just requesters being notified after someone acts on their request — with a dedicated notifications page (unread badge in the nav, mark-as-read individually or all at once, links back to the related request)
 - JWT auth, hashed passwords, secrets via environment variables, no stack traces leaked to the client
-- Automated test suite (`backend/tests/`, 54 tests across `test_workflow.py`, `test_admin.py`, and `test_error_handling_and_authorization.py`, covering the full reimbursement workflow, validation, RBAC, approval reversal, the reviewer-claims-request transition, request-info/resubmission, admin user/role/status management with audit history, sorting and pagination on both list endpoints, the standalone request-history endpoint, a real concurrency race condition found and fixed during development, and dedicated coverage of invalid-workflow-action prevention, unauthorized-action handling, and graceful error handling — including SQL-injection-style input)
+- Automated test suite (`backend/tests/`, 60 tests across `test_workflow.py`, `test_admin.py`, and `test_error_handling_and_authorization.py`, covering the full reimbursement workflow, validation, RBAC, approval reversal, the reviewer-claims-request transition, request-info/resubmission, admin user/role/status management with audit history, sorting and pagination on both list endpoints, the standalone request-history endpoint, a real concurrency race condition found and fixed during development, and dedicated coverage of invalid-workflow-action prevention, unauthorized-action handling, and graceful error handling — including SQL-injection-style input)
 - Fictional seed data covering every workflow state
 
 ## Tech stack
@@ -31,6 +33,7 @@ A full-stack reimbursement tracker built for the CDF SDE Hackathon. Requesters c
 - **Backend:** FastAPI, SQLAlchemy, SQLite (dev) / PostgreSQL (production — see Deployment), python-jose (JWT), passlib/bcrypt
 - **Frontend:** Next.js 14 (App Router), plain CSS (no UI framework)
 - **Deploy target:** Render (backend) + Vercel (frontend)
+- **Local dev:** run natively, or `docker compose up --build` for one-command setup
 
 ## Setup & run instructions
 
@@ -65,6 +68,16 @@ cd backend
 pytest -v
 ```
 
+### Docker (one command, both services)
+
+```bash
+docker compose up --build
+```
+
+Backend at `http://localhost:8000`, frontend at `http://localhost:3000`. Uses SQLite by default (mounted to a named volume so data survives container restarts) and seeds demo data automatically on first run — no separate steps needed. To use Postgres instead for closer production parity, swap `DATABASE_URL` in `docker-compose.yml` and add a `db` service (see the Deployment section below for the connection string format).
+
+**Honest note:** this Docker setup was built and reasoned through carefully — the exact runtime environment variables and startup command were verified against a real running server first — but wasn't tested inside an actual Docker container, since this development environment doesn't have a Docker daemon available. If `docker compose up --build` doesn't work exactly as described, that's useful to know — please flag it.
+
 ## Deployment
 
 **Backend on Render — must use Render's free Postgres, not SQLite on disk.** Render's free web services don't support persistent disks (confirmed via Render's own docs), so a SQLite file would very likely not survive a restart or redeploy in production, even though it works reliably for local development. Steps:
@@ -98,10 +111,10 @@ All demo accounts use password `password123`:
 
 ## Future improvements
 
-- Admin UI for user management
-- Notification bell / inbox in the frontend
-- Editable drafts with autosave
-- CSV export of the dashboard
-- Docker Compose for one-command local setup
+- Automated frontend tests (Playwright or similar) — currently the one layer without automated coverage
+- Object storage (S3-compatible) with short-lived signed URLs for receipts, instead of local disk
+- Optimistic UI updates on approve/reject so the reviewer doesn't wait on a full reload
+- Admin-configurable reimbursement categories, instead of fixed in code
+- CSV export of the dashboard and request list
 
 See `docs/architecture.md`, `docs/testing.md`, and `docs/reflection.md` for further detail.
