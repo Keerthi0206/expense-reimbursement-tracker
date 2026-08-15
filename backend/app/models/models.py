@@ -1,6 +1,6 @@
 import enum
 import uuid
-from datetime import datetime, date
+from datetime import datetime
 
 from sqlalchemy import (
     Column, String, Float, DateTime, Date, Enum, ForeignKey, Text, Boolean
@@ -28,6 +28,7 @@ class StatusEnum(str, enum.Enum):
     approved = "approved"
     rejected = "rejected"
     paid = "paid"
+    cancelled = "cancelled"
 
 
 class CategoryEnum(str, enum.Enum):
@@ -90,7 +91,8 @@ class ReimbursementRequest(Base):
         "User", back_populates="requests", foreign_keys=[requester_id]
     )
     history = relationship(
-        "RequestHistory", back_populates="request", cascade="all, delete-orphan"
+        "RequestHistory", back_populates="request", cascade="all, delete-orphan",
+        order_by="RequestHistory.timestamp",
     )
 
 
@@ -133,4 +135,5 @@ class UserAccountHistory(Base):
     action = Column(String, nullable=False)  # "created" | "role_changed" | "activated" | "deactivated"
     previous_value = Column(String, nullable=True)
     new_value = Column(String, nullable=True)
+    reason = Column(Text, nullable=True)
     timestamp = Column(DateTime, default=datetime.utcnow)

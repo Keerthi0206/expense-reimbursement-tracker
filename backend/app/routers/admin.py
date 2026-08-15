@@ -9,17 +9,17 @@ from app.core.security import require_role, hash_password
 from app.models.models import User, RoleEnum, UserAccountHistory
 from app.schemas.schemas import (
     UserOut, UserCreate, UserRoleUpdate, UserStatusUpdate, UserDetailOut,
-    UserAccountHistoryOut, PaginatedUsers, PaginatedUserHistory,
+    PaginatedUsers, PaginatedUserHistory,
 )
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
 
 def _log_account_history(db: Session, user_id: str, performed_by_id: str, action: str,
-                          previous_value: str = None, new_value: str = None):
+                          previous_value: str = None, new_value: str = None, reason: str = None):
     db.add(UserAccountHistory(
         user_id=user_id, performed_by_id=performed_by_id, action=action,
-        previous_value=previous_value, new_value=new_value,
+        previous_value=previous_value, new_value=new_value, reason=reason,
     ))
 
 
@@ -129,7 +129,9 @@ def update_role(
 
     previous_role = user.role.value
     user.role = payload.role
-    _log_account_history(db, user.id, current_user.id, "role_changed", previous_role, payload.role.value)
+    _log_account_history(
+        db, user.id, current_user.id, "role_changed", previous_role, payload.role.value, payload.reason,
+    )
     db.commit()
     db.refresh(user)
     return user
@@ -153,7 +155,7 @@ def update_status(
     user.is_active = payload.is_active
     if previous_status != new_status:
         action = "activated" if payload.is_active else "deactivated"
-        _log_account_history(db, user.id, current_user.id, action, previous_status, new_status)
+        _log_account_history(db, user.id, current_user.id, action, previous_status, new_status, payload.reason)
     db.commit()
     db.refresh(user)
     return user

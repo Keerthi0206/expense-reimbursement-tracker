@@ -42,10 +42,12 @@ class UserCreate(BaseModel):
 
 class UserRoleUpdate(BaseModel):
     role: RoleEnum
+    reason: Optional[str] = None
 
 
 class UserStatusUpdate(BaseModel):
     is_active: bool
+    reason: Optional[str] = None
 
 
 class UserAccountHistoryOut(BaseModel):
@@ -55,6 +57,7 @@ class UserAccountHistoryOut(BaseModel):
     action: str
     previous_value: Optional[str]
     new_value: Optional[str]
+    reason: Optional[str]
     timestamp: datetime
 
     class Config:
@@ -107,6 +110,10 @@ class RejectDecision(BaseModel):
 
 class InfoRequest(BaseModel):
     message: str = Field(min_length=1, max_length=1000)
+
+
+class CancelRequest(BaseModel):
+    reason: Optional[str] = None
 
 
 class RequesterOut(BaseModel):

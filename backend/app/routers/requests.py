@@ -5,7 +5,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Query
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
-from sqlalchemy import func, update
+from sqlalchemy import update
 
 from app.core.database import get_db
 from app.core.security import get_current_user, require_role
@@ -16,8 +16,8 @@ from app.models.models import (
 )
 from app.schemas.schemas import (
     RequestCreate, RequestUpdate, RequestOut, RequestDetailOut, RequesterOut,
-    PaginatedRequests, RejectDecision, ReviewDecision, InfoRequest, DashboardSummary,
-    HistoryEntryOut, PaginatedHistory,
+    PaginatedRequests, RejectDecision, ReviewDecision, InfoRequest, CancelRequest,
+    DashboardSummary, PaginatedHistory,
 )
 
 router = APIRouter(prefix="/api/requests", tags=["requests"])
@@ -197,6 +197,55 @@ def submit_request(
     _log_history(db, request_id, current_user.id, action, previous, StatusEnum.submitted.value)
     if was_resubmission and req.reviewer_id:
         _notify(db, req.reviewer_id, request_id, f"'{req.title}' was updated and resubmitted for review.")
+    elif not was_resubmission:
+        # No specific reviewer is assigned yet on a fresh submission, so let
+        # every active reviewer/admin know something new needs attention.
+        reviewers = db.query(User).filter(
+            User.role.in_([RoleEnum.reviewer, RoleEnum.admin]), User.is_active == True,
+        ).all()
+        for reviewer in reviewers:
+            _notify(db, reviewer.id, request_id, f"New request '{req.title}' was submitted for review.")
+    db.commit()
+    db.refresh(req)
+    return req
+
+
+@router.post("/{request_id}/cancel", response_model=RequestOut)
+def cancel_request(
+    request_id: str,
+    payload: CancelRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    req = db.query(ReimbursementRequest).filter(ReimbursementRequest.id == request_id).first()
+    if not req:
+        raise HTTPException(status_code=404, detail="Reimbursement request not found")
+    if req.requester_id != current_user.id:
+        raise HTTPException(status_code=403, detail="You can only cancel your own requests")
+
+    previous = req.status.value
+    won = _atomic_transition(
+        db, request_id,
+        (StatusEnum.draft, StatusEnum.submitted, StatusEnum.under_review, StatusEnum.changes_requested),
+        {"status": StatusEnum.cancelled},
+    )
+    if not won:
+        db.rollback()
+        current = db.query(ReimbursementRequest).filter(ReimbursementRequest.id == request_id).first()
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Only requests that haven't been approved, rejected, or paid can be cancelled "
+                f"(current status: {current.status.value if current else 'unknown'})"
+            ),
+        )
+
+    _log_history(db, request_id, current_user.id, "cancelled", previous, StatusEnum.cancelled.value, payload.reason)
+    if req.reviewer_id:
+        message = f"'{req.title}' was cancelled by the requester."
+        if payload.reason:
+            message += f" Reason: {payload.reason}"
+        _notify(db, req.reviewer_id, request_id, message)
     db.commit()
     db.refresh(req)
     return req
@@ -297,6 +346,7 @@ def get_request(
                 db, request_id, current_user.id, "opened_for_review",
                 StatusEnum.submitted.value, StatusEnum.under_review.value,
             )
+            _notify(db, req.requester_id, request_id, f"Your request '{req.title}' is now under review.")
             db.commit()
         else:
             db.rollback()
@@ -516,7 +566,9 @@ def dashboard(
 
     all_requests = query.all()
 
-    total_requested = sum(r.amount for r in all_requests if r.status != StatusEnum.draft)
+    total_requested = sum(
+        r.amount for r in all_requests if r.status not in (StatusEnum.draft, StatusEnum.cancelled)
+    )
     total_approved = sum(r.amount for r in all_requests if r.status in (StatusEnum.approved, StatusEnum.paid))
     # "pending" = awaiting reviewer action, so changes_requested doesn't count here
     total_pending = sum(r.amount for r in all_requests if r.status in (StatusEnum.submitted, StatusEnum.under_review))
