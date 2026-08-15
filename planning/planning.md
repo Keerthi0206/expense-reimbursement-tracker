@@ -59,14 +59,28 @@ frontend-to-backend CORS/login check. See `docs/testing.md` for full results.
 | 2 — Requester flow | Aug 14–15 | Auth, request form, validation, receipt upload, persistence |
 | 3 — Reviewer flow | Aug 15–16 | Reviewer dashboard, approve/reject/paid, history, search/filter |
 | 4 — Secure & test | Aug 16–17 | RBAC enforcement, dashboard totals, automated tests, seed data |
-| 5 — Polish & submit | Aug 17–19 | Deploy, docs, walkthrough video, final submission check |
+| 5 — Tier 2 stretch (attempt a few) | Aug 17–18 | Only after Tier 1 is complete and tested: pick a small number of Tier 2 items and go deep rather than wide, per the hackathon's own judging guidance |
+| 6 — Polish & submit | Aug 18–19 | Deploy, docs, walkthrough video, final submission check |
+
+Tier 2 items planned for Phase 5, in priority order: editable drafts with resubmission,
+a detailed request/account history audit trail, and a more complete automated test suite.
+Each is a Tier 2 item that meaningfully strengthens the core workflow rather than adding an
+unrelated feature, matching the hackathon's guidance that Tier 2 should build on a complete
+Tier 1, not compensate for one.
 
 ## What I'll Cut If Time Is Short
 
-First to drop: the admin UI (API stays, no screen). Next: notifications UI (data still generated
-server-side). Last thing to cut: the core Create→Submit→Review→Approve/Reject→Paid workflow,
-backend validation, and RBAC — these are the 30%+10%+10% of the rubric that matter most and
-won't be sacrificed for polish.
+**Tier 2 items are the first thing cut if time runs short** — they're explicitly optional per
+the hackathon's own rules, and a complete, tested Tier 1 submission outscores a Tier 1 submission
+with unfinished Tier 2 features bolted on. Within Tier 2, priority order if only some fit:
+editable drafts/resubmission first (directly strengthens the core workflow), then the detailed
+history audit trail, then the expanded test suite — CSV export, email notifications, and a
+Dockerized setup are the first three Tier 2 ideas to drop entirely.
+
+After Tier 2, next to drop: the admin UI (API stays, no screen). Next: notifications UI (data
+still generated server-side). Last thing to cut, no matter what: the core
+Create→Submit→Review→Approve/Reject→Paid workflow, backend validation, and RBAC — these are the
+30%+10%+10% of the rubric that matter most and won't be sacrificed for polish or stretch goals.
 
 ## Open Questions / Risks
 
