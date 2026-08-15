@@ -1,0 +1,142 @@
+"use client";
+
+import { useEffect, useState, useCallback } from "react";
+import Link from "next/link";
+import RequireAuth from "../../lib/require-auth";
+import { api } from "../../lib/api";
+import RequestRow from "../../components/RequestRow";
+
+function RequesterHome() {
+  const [data, setData] = useState(null);
+  const [statusFilter, setStatusFilter] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("");
+  const [keyword, setKeyword] = useState("");
+  const [page, setPage] = useState(1);
+  const [error, setError] = useState("");
+
+  const load = useCallback(async () => {
+    try {
+      const result = await api.listRequests({
+        status: statusFilter || undefined,
+        category: categoryFilter || undefined,
+        keyword: keyword || undefined,
+        page,
+        page_size: 10,
+      });
+      setData(result);
+    } catch (err) {
+      setError(err.message);
+    }
+  }, [statusFilter, categoryFilter, keyword, page]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  return (
+    <>
+      <div className="page-header">
+        <div>
+          <div className="eyebrow">Requester</div>
+          <h1>My Requests</h1>
+        </div>
+        <Link href="/requester/new" className="btn btn-primary">
+          + New Request
+        </Link>
+      </div>
+
+      {error && <div className="banner banner-error">{error}</div>}
+
+      <div className="filter-bar">
+        <select
+          value={statusFilter}
+          onChange={(e) => {
+            setStatusFilter(e.target.value);
+            setPage(1);
+          }}
+        >
+          <option value="">All statuses</option>
+          <option value="draft">Draft</option>
+          <option value="pending">Pending review (Submitted + Under Review)</option>
+          <option value="submitted">Submitted only</option>
+          <option value="under_review">Under Review only</option>
+          <option value="changes_requested">Changes Requested</option>
+          <option value="approved">Approved</option>
+          <option value="rejected">Rejected</option>
+          <option value="paid">Paid</option>
+        </select>
+        <select
+          value={categoryFilter}
+          onChange={(e) => {
+            setCategoryFilter(e.target.value);
+            setPage(1);
+          }}
+        >
+          <option value="">All categories</option>
+          <option value="travel">Travel</option>
+          <option value="meals">Meals</option>
+          <option value="office_supplies">Office Supplies</option>
+          <option value="software_subscriptions">Software / Subscriptions</option>
+          <option value="event_expenses">Event Expenses</option>
+          <option value="training">Training</option>
+          <option value="other">Other</option>
+        </select>
+        <input
+          type="text"
+          placeholder="Search title or description…"
+          value={keyword}
+          onChange={(e) => {
+            setKeyword(e.target.value);
+            setPage(1);
+          }}
+        />
+      </div>
+
+      {!data ? (
+        <p>Loading…</p>
+      ) : data.items.length === 0 ? (
+        <div className="empty-state">
+          <p>No requests match these filters yet.</p>
+          <Link href="/requester/new" className="btn btn-primary" style={{ marginTop: 12 }}>
+            Create your first request
+          </Link>
+        </div>
+      ) : (
+        <>
+          {data.items.map((r) => (
+            <RequestRow key={r.id} request={r} />
+          ))}
+          {data.total_pages > 1 && (
+            <div className="pagination">
+              <button
+                className="btn btn-sm"
+                disabled={page <= 1}
+                onClick={() => setPage((p) => p - 1)}
+              >
+                Previous
+              </button>
+              <span>
+                Page {data.page} of {data.total_pages} ({data.total} total)
+              </span>
+              <button
+                className="btn btn-sm"
+                disabled={page >= data.total_pages}
+                onClick={() => setPage((p) => p + 1)}
+              >
+                Next
+              </button>
+            </div>
+          )}
+        </>
+      )}
+    </>
+  );
+}
+
+export default function Page() {
+  return (
+    <RequireAuth roles={["requester", "admin"]}>
+      <RequesterHome />
+    </RequireAuth>
+  );
+}
