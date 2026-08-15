@@ -1,13 +1,14 @@
 # Walkthrough Video
 
-> **Add your walkthrough video link here before submission.**
+**Video Link:** _add before submission_
 
-**Video Link:** <!-- e.g. https://www.loom.com/share/your-video-id -->
+## What to cover (3-5 minutes)
 
-The video should be 3-5 minutes and cover:
-- A live demo of your deployed tool
-- Which model you used and how detection works
-- A risky example being detected, explained, and safely redacted
-- A safe example being correctly left unchanged (no over-redaction)
-- Your accuracy results (precision / recall / F1)
-- Any tradeoffs or things you'd do differently with more time
+- What you built and the tech stack (FastAPI + SQLite backend, Next.js frontend)
+- Requester workflow: create a request, trigger a validation error (negative amount or missing receipt), attach a receipt, submit
+- Reviewer workflow: view the queue, approve one request, reject another with a reason, mark an approved request as Paid
+- Search/filter the request list
+- Dashboard totals
+- How data is stored (SQLite via SQLAlchemy) and how receipts are protected (magic-byte validation, access restricted to the owner + reviewers/admins)
+- How roles are enforced (backend `require_role` dependency — demonstrate a 403 when a requester tries a reviewer action)
+- Known limitations and what you'd improve next (see `docs/reflection.md`)
