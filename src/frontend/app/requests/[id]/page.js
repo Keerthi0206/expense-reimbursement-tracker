@@ -62,6 +62,9 @@ function RequestDetail() {
   // A reviewer can revoke a mistaken approval (reject with a reason) any time before payment.
   const canRevokeApproval = isReviewer && request && !isOwner && request.status === "approved";
   const canMarkPaid = isReviewer && request && !isOwner && request.status === "approved";
+  // Owner can cancel any time before a reviewer has made a final decision.
+  const canCancel =
+    isOwner && request && ["draft", "submitted", "under_review", "changes_requested"].includes(request.status);
 
   async function handleViewReceipt() {
     try {
@@ -133,6 +136,24 @@ function RequestDetail() {
       await load();
       setShowInfoForm(false);
       setInfoMessage("");
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleCancel() {
+    const confirmed = window.confirm(
+      "Cancel this request? It will no longer be actionable, but stays in your history."
+    );
+    if (!confirmed) return;
+    const reason = window.prompt("Optional: why are you cancelling this? (Cancel to skip)");
+    setBusy(true);
+    setError("");
+    try {
+      await api.cancelRequest(id, reason || undefined);
+      await load();
     } catch (err) {
       setError(err.message);
     } finally {
@@ -221,7 +242,14 @@ function RequestDetail() {
           <div className="eyebrow">Reimbursement Request</div>
           <h1>{request.title}</h1>
         </div>
-        <StatusStamp status={request.status} />
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          {canCancel && (
+            <button className="btn btn-sm btn-reject" onClick={handleCancel} disabled={busy}>
+              Cancel request
+            </button>
+          )}
+          <StatusStamp status={request.status} />
+        </div>
       </div>
 
       {error && <div className="banner banner-error">{error}</div>}
@@ -274,7 +302,7 @@ function RequestDetail() {
           </div>
         )}
         {request.status === "changes_requested" && request.info_requested_message && (
-          <div className="banner" style={{ marginTop: 16, background: "var(--stamp-ochre-soft)", color: "var(--stamp-ochre)", border: "1px solid #e8d4a8" }}>
+          <div className="banner" style={{ marginTop: 16, background: "var(--stamp-ochre-soft)", color: "var(--stamp-ochre)", border: "1px solid var(--stamp-ochre)" }}>
             <strong>Reviewer requested more information:</strong> {request.info_requested_message}
           </div>
         )}

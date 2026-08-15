@@ -1,13 +1,31 @@
 @import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap");
 
 :root {
-  /* Ledger-book palette: cool paper, deep ink, a stamped-teal accent for approvals,
-     ochre for pending, brick for rejected. Deliberately not the cream+terracotta default. */
+  /* Ledger-book palette. The cover (topbar, primary buttons) is a constant
+     dark forest-green in both themes — like a real ledger's binding doesn't
+     change color at night, only the pages do. --ink flips per theme below;
+     --cover never does. */
+  --cover: #17241d;
+  --cover-hover: #0f1a14;
+  --cover-text: #f2f4f0;
+  --cover-text-soft: #b7c2ba;
+  --cover-border: #3a463e;
+
+  /* Solid filled buttons (Approve/Reject) use these constants, not the
+     stamp-* tokens below — those get brighter in dark mode for text-on-dark
+     contrast, which would break white button text if reused here. */
+  --action-approve: #0e6b5c;
+  --action-approve-hover: #0b5648;
+  --action-reject: #a8433a;
+  --action-reject-hover: #8a352e;
+  --action-text: #ffffff;
+
   --paper: #f4f6f4;
   --paper-raised: #ffffff;
   --ink: #17241d;
   --ink-soft: #4b5b52;
   --line: #d9e0da;
+
   --stamp-teal: #0e6b5c;
   --stamp-teal-soft: #e3f1ee;
   --stamp-ochre: #ad7a1f;
@@ -16,7 +34,49 @@
   --stamp-brick-soft: #f8e6e4;
   --stamp-slate: #526073;
   --stamp-slate-soft: #e7ebef;
+  --stamp-blue: #1d5fa3;
+  --stamp-blue-soft: #e2edf8;
+  --stamp-paid: #0b5648;
+  --stamp-paid-soft: #d7ede8;
+  --badge-purple: #5b3ea6;
+  --badge-purple-soft: #ece5f7;
+
+  --danger-border: #e6c3bf;
+  --success-border: #bfe0d8;
   --focus: #0e6b5c;
+  --shadow-sm: 0 1px 2px rgba(23, 36, 29, 0.05);
+  --shadow-md: 0 2px 8px rgba(23, 36, 29, 0.06), 0 1px 2px rgba(23, 36, 29, 0.05);
+  color-scheme: light;
+}
+
+[data-theme="dark"] {
+  --paper: #121915;
+  --paper-raised: #1b2420;
+  --ink: #e9e6dc;
+  --ink-soft: #9aa39a;
+  --line: #2c3830;
+
+  --stamp-teal: #4fd3b5;
+  --stamp-teal-soft: rgba(79, 211, 181, 0.16);
+  --stamp-ochre: #e3ac4a;
+  --stamp-ochre-soft: rgba(227, 172, 74, 0.16);
+  --stamp-brick: #e6786c;
+  --stamp-brick-soft: rgba(230, 120, 108, 0.16);
+  --stamp-slate: #9aa7b5;
+  --stamp-slate-soft: rgba(154, 167, 181, 0.16);
+  --stamp-blue: #6badea;
+  --stamp-blue-soft: rgba(107, 173, 234, 0.16);
+  --stamp-paid: #34c99e;
+  --stamp-paid-soft: rgba(52, 201, 158, 0.16);
+  --badge-purple: #b79ae0;
+  --badge-purple-soft: rgba(183, 154, 224, 0.16);
+
+  --danger-border: rgba(230, 120, 108, 0.4);
+  --success-border: rgba(79, 211, 181, 0.4);
+  --focus: #4fd3b5;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.35), 0 1px 3px rgba(0, 0, 0, 0.3);
+  color-scheme: dark;
 }
 
 * {
@@ -32,6 +92,7 @@ body {
   font-family: "IBM Plex Sans", system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   overflow-x: hidden;
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 h1,
@@ -75,8 +136,8 @@ textarea {
 }
 
 .topbar {
-  background: var(--ink);
-  color: var(--paper);
+  background: var(--cover);
+  color: var(--cover-text);
   padding: 14px 24px;
   display: flex;
   align-items: center;
@@ -100,7 +161,7 @@ textarea {
 
 .brand .sub {
   font-size: 0.75rem;
-  color: #a9b6ad;
+  color: var(--cover-text-soft);
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
@@ -114,14 +175,14 @@ textarea {
 
 .nav a {
   text-decoration: none;
-  color: #d3ddd6;
+  color: var(--cover-text-soft);
   padding: 6px 2px;
   border-bottom: 2px solid transparent;
 }
 
 .nav a:hover,
 .nav a.active {
-  color: #fff;
+  color: var(--cover-text);
   border-bottom-color: var(--stamp-teal);
 }
 
@@ -130,7 +191,7 @@ textarea {
   align-items: center;
   gap: 12px;
   font-size: 0.85rem;
-  color: #c7d1cb;
+  color: var(--cover-text-soft);
 }
 
 .role-chip {
@@ -142,10 +203,38 @@ textarea {
   border-radius: 3px;
 }
 
+.theme-toggle {
+  background: none;
+  padding: 6px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.95rem;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.theme-toggle-cover {
+  border: 1px solid var(--cover-border);
+  color: var(--cover-text-soft);
+}
+.theme-toggle-cover:hover {
+  border-color: var(--stamp-teal);
+  color: var(--cover-text);
+}
+.theme-toggle-paper {
+  border: 1px solid var(--line);
+  color: var(--ink-soft);
+}
+.theme-toggle-paper:hover {
+  border-color: var(--stamp-teal);
+  color: var(--ink);
+}
+
 .logout-btn {
   background: none;
-  border: 1px solid #47554d;
-  color: #d3ddd6;
+  border: 1px solid var(--cover-border);
+  color: var(--cover-text-soft);
   padding: 6px 12px;
   border-radius: 4px;
   cursor: pointer;
@@ -153,7 +242,7 @@ textarea {
 }
 .logout-btn:hover {
   border-color: var(--stamp-teal);
-  color: #fff;
+  color: var(--cover-text);
 }
 
 .page {
@@ -198,6 +287,8 @@ textarea {
   border: 1px solid var(--line);
   border-radius: 6px;
   padding: 20px;
+  box-shadow: var(--shadow-sm);
+  transition: background-color 0.2s ease, border-color 0.2s ease;
 }
 
 .card + .card {
@@ -232,30 +323,30 @@ textarea {
 }
 
 .btn-primary {
-  background: var(--ink);
-  border-color: var(--ink);
-  color: #fff;
+  background: var(--cover);
+  border-color: var(--cover);
+  color: var(--cover-text);
 }
 .btn-primary:hover {
-  background: #0f1a14;
+  background: var(--cover-hover);
 }
 
 .btn-approve {
-  background: var(--stamp-teal);
-  border-color: var(--stamp-teal);
-  color: #fff;
+  background: var(--action-approve);
+  border-color: var(--action-approve);
+  color: var(--action-text);
 }
 .btn-approve:hover {
-  background: #0b5648;
+  background: var(--action-approve-hover);
 }
 
 .btn-reject {
-  background: var(--stamp-brick);
-  border-color: var(--stamp-brick);
-  color: #fff;
+  background: var(--action-reject);
+  border-color: var(--action-reject);
+  color: var(--action-text);
 }
 .btn-reject:hover {
-  background: #8a352e;
+  background: var(--action-reject-hover);
 }
 
 .btn-sm {
@@ -284,7 +375,7 @@ textarea {
   padding: 10px 12px;
   border: 1px solid var(--line);
   border-radius: 4px;
-  background: #fff;
+  background: var(--paper-raised);
   color: var(--ink);
 }
 
@@ -320,12 +411,12 @@ textarea {
 .banner-error {
   background: var(--stamp-brick-soft);
   color: var(--stamp-brick);
-  border: 1px solid #e6c3bf;
+  border: 1px solid var(--danger-border);
 }
 .banner-success {
   background: var(--stamp-teal-soft);
   color: var(--stamp-teal);
-  border: 1px solid #bfe0d8;
+  border: 1px solid var(--success-border);
 }
 
 /* ---------- Status stamps ---------- */
@@ -350,8 +441,8 @@ textarea {
 }
 .stamp-submitted,
 .stamp-under_review {
-  color: #1d5fa3;
-  background: #e2edf8;
+  color: var(--stamp-blue);
+  background: var(--stamp-blue-soft);
 }
 .stamp-approved {
   color: var(--stamp-teal);
@@ -366,9 +457,14 @@ textarea {
   background: var(--stamp-brick-soft);
 }
 .stamp-paid {
-  color: #0b5648;
-  background: #d7ede8;
+  color: var(--stamp-paid);
+  background: var(--stamp-paid-soft);
   border-style: solid;
+}
+.stamp-cancelled {
+  color: var(--stamp-slate);
+  background: var(--stamp-slate-soft);
+  text-decoration: line-through;
 }
 
 /* ---------- Request rows ---------- */
@@ -385,17 +481,22 @@ textarea {
   text-decoration: none;
   color: var(--ink);
   margin-bottom: 10px;
+  box-shadow: var(--shadow-sm);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
 }
 
 .ledger-row.stripe-draft { border-left-color: var(--stamp-slate); }
-.ledger-row.stripe-submitted, .ledger-row.stripe-under_review { border-left-color: #1d5fa3; }
+.ledger-row.stripe-submitted, .ledger-row.stripe-under_review { border-left-color: var(--stamp-blue); }
 .ledger-row.stripe-changes_requested { border-left-color: var(--stamp-ochre); }
 .ledger-row.stripe-approved { border-left-color: var(--stamp-teal); }
 .ledger-row.stripe-rejected { border-left-color: var(--stamp-brick); }
-.ledger-row.stripe-paid { border-left-color: #0b5648; }
+.ledger-row.stripe-paid { border-left-color: var(--stamp-paid); }
+.ledger-row.stripe-cancelled { border-left-color: var(--stamp-slate); }
 
 .ledger-row:hover {
   border-color: var(--ink-soft);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
 }
 
 .ledger-main {
@@ -451,6 +552,8 @@ textarea {
   border: 1px solid var(--line);
   border-radius: 6px;
   padding: 16px;
+  box-shadow: var(--shadow-sm);
+  transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .stat-tile .label {
@@ -472,7 +575,8 @@ textarea {
 .filter-bar {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  align-items: flex-end;
+  gap: 16px;
   margin-bottom: 20px;
 }
 
@@ -481,8 +585,34 @@ textarea {
   padding: 8px 10px;
   border: 1px solid var(--line);
   border-radius: 4px;
-  background: #fff;
+  background: var(--paper-raised);
+  color: var(--ink);
   font-size: 0.85rem;
+}
+
+.filter-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.filter-field-label {
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-soft);
+}
+
+.filter-range {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.filter-range span {
+  font-size: 0.75rem;
+  color: var(--ink-soft);
 }
 
 .empty-state {
@@ -551,8 +681,8 @@ textarea {
   border-radius: 3px;
 }
 
-.badge-role-admin { background: #ece5f7; color: #5b3ea6; }
-.badge-role-reviewer { background: #e2edf8; color: #1d5fa3; }
+.badge-role-admin { background: var(--badge-purple-soft); color: var(--badge-purple); }
+.badge-role-reviewer { background: var(--stamp-blue-soft); color: var(--stamp-blue); }
 .badge-role-requester { background: var(--stamp-slate-soft); color: var(--stamp-slate); }
 
 .badge-active { background: var(--stamp-teal-soft); color: var(--stamp-teal); }
@@ -570,7 +700,8 @@ textarea {
   border: 1px solid var(--line);
   border-radius: 4px;
   font-size: 0.82rem;
-  background: #fff;
+  background: var(--paper-raised);
+  color: var(--ink);
 }
 
 .history-item {

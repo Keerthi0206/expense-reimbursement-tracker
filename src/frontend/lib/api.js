@@ -73,6 +73,7 @@ export const api = {
   approveRequest: (id, comment) => request(`/api/requests/${id}/approve`, { method: "POST", body: { comment } }),
   rejectRequest: (id, reason) => request(`/api/requests/${id}/reject`, { method: "POST", body: { reason } }),
   requestInfo: (id, message) => request(`/api/requests/${id}/request-info`, { method: "POST", body: { message } }),
+  cancelRequest: (id, reason) => request(`/api/requests/${id}/cancel`, { method: "POST", body: { reason } }),
   markPaid: (id) => request(`/api/requests/${id}/mark-paid`, { method: "POST" }),
   dashboard: () => request("/api/requests/stats/dashboard"),
   listRequesters: () => request("/api/requests/meta/requesters"),
@@ -94,9 +95,8 @@ export const api = {
   getUser: (id) => request(`/api/admin/users/${id}`),
   getUserHistory: (id) => request(`/api/admin/users/${id}/history?page_size=50`),
   createUser: (payload) => request("/api/admin/users", { method: "POST", body: payload }),
-  updateUserRole: (id, role) => request(`/api/admin/users/${id}/role`, { method: "PATCH", body: { role } }),
-  updateUserStatus: (id, is_active) =>
-    request(`/api/admin/users/${id}/status`, { method: "PATCH", body: { is_active } }),
+  updateUserRole: (id, role, reason) =>
+    request(`/api/admin/users/${id}/role`, { method: "PATCH", body: { role, reason } }),
+  updateUserStatus: (id, is_active, reason) =>
+    request(`/api/admin/users/${id}/status`, { method: "PATCH", body: { is_active, reason } }),
 };
-
-export { ApiError, getToken, API_URL };

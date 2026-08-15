@@ -2,9 +2,28 @@
 
 import { useState } from "react";
 import { useAuth } from "../../lib/auth-context";
+import { useTheme } from "../../lib/theme-context";
+
+function SunIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+      <circle cx="12" cy="12" r="4" />
+      <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
+    </svg>
+  );
+}
+
+function MoonIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+    </svg>
+  );
+}
 
 export default function LoginPage() {
   const { login } = useAuth();
+  const { theme, toggleTheme } = useTheme();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -29,7 +48,16 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="center-shell">
+    <div className="center-shell" style={{ position: "relative" }}>
+      <button
+        className="theme-toggle theme-toggle-paper"
+        onClick={toggleTheme}
+        aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+        title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+        style={{ position: "absolute", top: 20, right: 20 }}
+      >
+        {theme === "dark" ? <SunIcon /> : <MoonIcon />}
+      </button>
       <div className="login-card">
         <div className="eyebrow">Community Dreams Foundation</div>
         <h1 style={{ marginBottom: 6 }}>Expense Ledger</h1>

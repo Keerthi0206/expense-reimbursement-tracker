@@ -48,48 +48,58 @@ function RequesterHome() {
       {error && <div className="banner banner-error">{error}</div>}
 
       <div className="filter-bar">
-        <select
-          value={statusFilter}
-          onChange={(e) => {
-            setStatusFilter(e.target.value);
-            setPage(1);
-          }}
-        >
-          <option value="">All statuses</option>
-          <option value="draft">Draft</option>
-          <option value="pending">Pending review (Submitted + Under Review)</option>
-          <option value="submitted">Submitted only</option>
-          <option value="under_review">Under Review only</option>
-          <option value="changes_requested">Changes Requested</option>
-          <option value="approved">Approved</option>
-          <option value="rejected">Rejected</option>
-          <option value="paid">Paid</option>
-        </select>
-        <select
-          value={categoryFilter}
-          onChange={(e) => {
-            setCategoryFilter(e.target.value);
-            setPage(1);
-          }}
-        >
-          <option value="">All categories</option>
-          <option value="travel">Travel</option>
-          <option value="meals">Meals</option>
-          <option value="office_supplies">Office Supplies</option>
-          <option value="software_subscriptions">Software / Subscriptions</option>
-          <option value="event_expenses">Event Expenses</option>
-          <option value="training">Training</option>
-          <option value="other">Other</option>
-        </select>
-        <input
-          type="text"
-          placeholder="Search title or description…"
-          value={keyword}
-          onChange={(e) => {
-            setKeyword(e.target.value);
-            setPage(1);
-          }}
-        />
+        <div className="filter-field">
+          <label className="filter-field-label">Status</label>
+          <select
+            value={statusFilter}
+            onChange={(e) => {
+              setStatusFilter(e.target.value);
+              setPage(1);
+            }}
+          >
+            <option value="">All statuses</option>
+            <option value="draft">Draft</option>
+            <option value="pending">Pending review (Submitted + Under Review)</option>
+            <option value="submitted">Submitted only</option>
+            <option value="under_review">Under Review only</option>
+            <option value="changes_requested">Changes Requested</option>
+            <option value="approved">Approved</option>
+            <option value="rejected">Rejected</option>
+            <option value="paid">Paid</option>
+            <option value="cancelled">Cancelled</option>
+          </select>
+        </div>
+        <div className="filter-field">
+          <label className="filter-field-label">Category</label>
+          <select
+            value={categoryFilter}
+            onChange={(e) => {
+              setCategoryFilter(e.target.value);
+              setPage(1);
+            }}
+          >
+            <option value="">All categories</option>
+            <option value="travel">Travel</option>
+            <option value="meals">Meals</option>
+            <option value="office_supplies">Office Supplies</option>
+            <option value="software_subscriptions">Software / Subscriptions</option>
+            <option value="event_expenses">Event Expenses</option>
+            <option value="training">Training</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+        <div className="filter-field">
+          <label className="filter-field-label">Search</label>
+          <input
+            type="text"
+            placeholder="Title or description…"
+            value={keyword}
+            onChange={(e) => {
+              setKeyword(e.target.value);
+              setPage(1);
+            }}
+          />
+        </div>
       </div>
 
       {!data ? (
