@@ -1,37 +1,32 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from pydantic import BaseModel
-from datetime import datetime
+import math
 
 from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models.models import Notification, User
+from app.schemas.schemas import NotificationOut, PaginatedNotifications
 
 router = APIRouter(prefix="/api/notifications", tags=["notifications"])
 
 
-class NotificationOut(BaseModel):
-    id: str
-    message: str
-    is_read: bool
-    request_id: str | None
-    created_at: datetime
-
-    class Config:
-        from_attributes = True
-
-
-@router.get("", response_model=list[NotificationOut])
+@router.get("", response_model=PaginatedNotifications)
 def list_notifications(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    return (
-        db.query(Notification)
-        .filter(Notification.user_id == current_user.id)
-        .order_by(Notification.created_at.desc())
+    query = db.query(Notification).filter(Notification.user_id == current_user.id)
+    total = query.count()
+    total_pages = max(1, math.ceil(total / page_size))
+    items = (
+        query.order_by(Notification.created_at.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
         .all()
     )
+    return PaginatedNotifications(items=items, page=page, page_size=page_size, total=total, total_pages=total_pages)
 
 
 @router.patch("/{notification_id}/read", response_model=NotificationOut)
