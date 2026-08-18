@@ -93,6 +93,7 @@ class ReimbursementRequest(Base):
     requester = relationship(
         "User", back_populates="requests", foreign_keys=[requester_id]
     )
+    reviewer = relationship("User", foreign_keys=[reviewer_id])
     history = relationship(
         "RequestHistory", back_populates="request", cascade="all, delete-orphan",
         order_by="RequestHistory.timestamp",

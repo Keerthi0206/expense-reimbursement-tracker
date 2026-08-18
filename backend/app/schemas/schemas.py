@@ -267,3 +267,45 @@ class DashboardSummary(BaseModel):
     total_pending: float
     total_paid: float
     count_by_status: dict
+
+
+class MonthlyTotal(BaseModel):
+    month: str  # "2026-01"
+    total: float
+    count: int
+
+
+class CategoryTotal(BaseModel):
+    category: str
+    total: float
+    count: int
+
+
+class RequesterTotal(BaseModel):
+    requester_id: str
+    requester_name: str
+    total: float
+    count: int
+
+
+class ApprovalTimeStats(BaseModel):
+    avg_days: Optional[float]
+    median_days: Optional[float]
+    count: int
+
+
+class ReviewerWorkload(BaseModel):
+    reviewer_id: str
+    reviewer_name: str
+    approved_count: int
+    rejected_count: int
+    total_reviewed: int
+
+
+class AnalyticsOut(BaseModel):
+    monthly_totals: List[MonthlyTotal]
+    by_category: List[CategoryTotal]
+    by_requester: List[RequesterTotal]
+    approval_time: ApprovalTimeStats
+    reviewer_workload: List[ReviewerWorkload]
+    average_request_amount: float
