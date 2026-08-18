@@ -1,12 +1,15 @@
 import os
 import logging
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
+from apscheduler.schedulers.background import BackgroundScheduler
 
-from app.core.database import Base, engine
+from app.core.database import Base, engine, SessionLocal
+from app.core.reminders import send_pending_reminders
 from app.routers import auth, requests as requests_router, admin, notifications
 
 logging.basicConfig(level=logging.INFO)
@@ -14,7 +17,35 @@ logger = logging.getLogger("expense_tracker")
 
 Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title="CDF Expense & Reimbursement Tracker API")
+
+def _run_reminder_check():
+    db = SessionLocal()
+    try:
+        count = send_pending_reminders(db)
+        if count:
+            logger.info("Sent reminders for %d pending request(s)", count)
+    except Exception:
+        logger.exception("Reminder check failed")
+    finally:
+        db.close()
+
+
+scheduler = BackgroundScheduler()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Every hour by default; each run only reminds requests that have crossed
+    # REMINDER_THRESHOLD_DAYS and haven't been reminded about recently, so a
+    # frequent check interval doesn't translate into frequent notifications.
+    interval_minutes = int(os.getenv("REMINDER_CHECK_INTERVAL_MINUTES", "60"))
+    scheduler.add_job(_run_reminder_check, "interval", minutes=interval_minutes, id="reminder_check")
+    scheduler.start()
+    yield
+    scheduler.shutdown()
+
+
+app = FastAPI(title="CDF Expense & Reimbursement Tracker API", lifespan=lifespan)
 
 allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
 app.add_middleware(

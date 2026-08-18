@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.security import require_role, hash_password
+from app.core.reminders import send_pending_reminders, REMINDER_THRESHOLD_DAYS
 from app.models.models import User, RoleEnum, UserAccountHistory
 from app.schemas.schemas import (
     UserOut, UserCreate, UserRoleUpdate, UserStatusUpdate, UserDetailOut,
@@ -159,3 +160,15 @@ def update_status(
     db.commit()
     db.refresh(user)
     return user
+
+
+@router.post("/trigger-reminders")
+def trigger_reminders(
+    current_user: User = Depends(require_role(RoleEnum.admin.value)),
+    db: Session = Depends(get_db),
+):
+    """Manually runs the same reminder check the background scheduler runs
+    periodically. Exists so reminders are actually testable/demoable without
+    waiting REMINDER_THRESHOLD_DAYS of real wall-clock time."""
+    count = send_pending_reminders(db)
+    return {"reminders_sent": count, "threshold_days": REMINDER_THRESHOLD_DAYS}
