@@ -7,10 +7,7 @@ import { api } from "../../../lib/api";
 
 const TODAY = new Date().toISOString().slice(0, 10);
 
-// Mirrors backend/app/core/budget.py -- kept in sync manually since these are
-// fixed constants, not admin-configurable. Used here only for an immediate
-// warning as the requester types; the backend's computed `exceeds_budget`
-// field on the actual response is still the authoritative value.
+// mirrors backend/app/core/budget.py -- backend's exceeds_budget is authoritative
 const CATEGORY_BUDGET_LIMITS = {
   travel: 800,
   meals: 150,
