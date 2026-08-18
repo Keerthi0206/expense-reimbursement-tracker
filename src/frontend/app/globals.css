@@ -46,6 +46,7 @@
   --focus: #0e6b5c;
   --shadow-sm: 0 1px 2px rgba(23, 36, 29, 0.05);
   --shadow-md: 0 2px 8px rgba(23, 36, 29, 0.06), 0 1px 2px rgba(23, 36, 29, 0.05);
+  --panel-bg: rgba(23, 36, 29, 0.02);
   color-scheme: light;
 }
 
@@ -76,6 +77,7 @@
   --focus: #4fd3b5;
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
   --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.35), 0 1px 3px rgba(0, 0, 0, 0.3);
+  --panel-bg: rgba(233, 230, 220, 0.025);
   color-scheme: dark;
 }
 
@@ -144,6 +146,9 @@ textarea {
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 12px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18);
+  position: relative;
+  z-index: 5;
 }
 
 .brand {
@@ -583,6 +588,10 @@ textarea {
   align-items: flex-end;
   gap: 16px;
   margin-bottom: 20px;
+  padding: 14px 16px;
+  background: var(--panel-bg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
 }
 
 .filter-bar select,
@@ -593,6 +602,20 @@ textarea {
   background: var(--paper-raised);
   color: var(--ink);
   font-size: 0.85rem;
+  height: 36px;
+  box-sizing: border-box;
+  transition: border-color 0.15s ease;
+}
+
+.filter-bar select:focus,
+.filter-bar input:focus {
+  outline: none;
+  border-color: var(--stamp-teal);
+}
+
+.filter-field .btn {
+  height: 36px;
+  box-sizing: border-box;
 }
 
 .filter-field {

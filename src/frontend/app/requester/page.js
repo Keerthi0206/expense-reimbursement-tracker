@@ -89,7 +89,7 @@ function RequesterHome() {
             <option value="other">Other</option>
           </select>
         </div>
-        <div className="filter-field">
+        <div className="filter-field" style={{ flex: 1, minWidth: 180 }}>
           <label className="filter-field-label">Search</label>
           <input
             type="text"
@@ -101,6 +101,17 @@ function RequesterHome() {
             }}
           />
         </div>
+        {(statusFilter || categoryFilter || keyword) && (
+          <div className="filter-field">
+            <label className="filter-field-label">&nbsp;</label>
+            <button
+              className="btn btn-sm"
+              onClick={() => { setStatusFilter(""); setCategoryFilter(""); setKeyword(""); setPage(1); }}
+            >
+              Clear
+            </button>
+          </div>
+        )}
       </div>
 
       {!data ? (

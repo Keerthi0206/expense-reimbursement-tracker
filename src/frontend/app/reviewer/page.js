@@ -33,6 +33,7 @@ function ReviewerHome() {
   const [order, setOrder] = useState("desc");
   const [page, setPage] = useState(1);
   const [error, setError] = useState("");
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   const loadDashboard = useCallback(() => {
     api.dashboard().then(setDashboard).catch((err) => setError(err.message));
@@ -88,6 +89,9 @@ function ReviewerHome() {
     setOrder("desc");
     setPage(1);
   }
+
+  const activeAdvancedCount = [categoryFilter, requesterFilter, dateFrom, dateTo, minAmount, maxAmount]
+    .filter(Boolean).length;
 
   return (
     <>
@@ -163,101 +167,7 @@ function ReviewerHome() {
           </select>
         </div>
 
-        <div className="filter-field">
-          <label className="filter-field-label">Category</label>
-          <select
-            value={categoryFilter}
-            onChange={(e) => {
-              setCategoryFilter(e.target.value);
-              setPage(1);
-            }}
-          >
-            <option value="">All categories</option>
-            <option value="travel">Travel</option>
-            <option value="meals">Meals</option>
-            <option value="office_supplies">Office Supplies</option>
-            <option value="software_subscriptions">Software / Subscriptions</option>
-            <option value="event_expenses">Event Expenses</option>
-            <option value="training">Training</option>
-            <option value="other">Other</option>
-          </select>
-        </div>
-
-        <div className="filter-field">
-          <label className="filter-field-label">Requester</label>
-          <select
-            value={requesterFilter}
-            onChange={(e) => {
-              setRequesterFilter(e.target.value);
-              setPage(1);
-            }}
-          >
-            <option value="">All requesters</option>
-            {requesters.map((r) => (
-              <option key={r.id} value={r.id}>{r.name}</option>
-            ))}
-          </select>
-        </div>
-
-        <div className="filter-field">
-          <label className="filter-field-label">Expense date</label>
-          <div className="filter-range">
-            <input
-              type="date"
-              aria-label="From date"
-              value={dateFrom}
-              onChange={(e) => {
-                setDateFrom(e.target.value);
-                setPage(1);
-              }}
-            />
-            <span>to</span>
-            <input
-              type="date"
-              aria-label="To date"
-              value={dateTo}
-              onChange={(e) => {
-                setDateTo(e.target.value);
-                setPage(1);
-              }}
-            />
-          </div>
-        </div>
-
-        <div className="filter-field">
-          <label className="filter-field-label">Amount</label>
-          <div className="filter-range">
-            <input
-              type="number"
-              step="0.01"
-              min="0"
-              placeholder="Min"
-              aria-label="Minimum amount"
-              style={{ width: 80 }}
-              value={minAmount}
-              onChange={(e) => {
-                setMinAmount(e.target.value);
-                setPage(1);
-              }}
-            />
-            <span>to</span>
-            <input
-              type="number"
-              step="0.01"
-              min="0"
-              placeholder="Max"
-              aria-label="Maximum amount"
-              style={{ width: 80 }}
-              value={maxAmount}
-              onChange={(e) => {
-                setMaxAmount(e.target.value);
-                setPage(1);
-              }}
-            />
-          </div>
-        </div>
-
-        <div className="filter-field">
+        <div className="filter-field" style={{ flex: 1, minWidth: 180 }}>
           <label className="filter-field-label">Search</label>
           <input
             type="text"
@@ -293,11 +203,123 @@ function ReviewerHome() {
 
         <div className="filter-field">
           <label className="filter-field-label">&nbsp;</label>
-          <button className="btn btn-sm" onClick={clearFilters}>
-            Clear filters
+          <button
+            className="btn btn-sm"
+            onClick={() => setShowAdvanced((v) => !v)}
+            style={activeAdvancedCount > 0 ? { borderColor: "var(--stamp-teal)", color: "var(--stamp-teal)" } : undefined}
+          >
+            {showAdvanced ? "▴ Hide filters" : "▾ More filters"}
+            {activeAdvancedCount > 0 && ` (${activeAdvancedCount})`}
           </button>
         </div>
+
+        {(activeAdvancedCount > 0 || keyword || statusFilter !== "pending") && (
+          <div className="filter-field">
+            <label className="filter-field-label">&nbsp;</label>
+            <button className="btn btn-sm" onClick={clearFilters}>
+              Clear all
+            </button>
+          </div>
+        )}
       </div>
+
+      {showAdvanced && (
+        <div className="filter-bar">
+          <div className="filter-field">
+            <label className="filter-field-label">Category</label>
+            <select
+              value={categoryFilter}
+              onChange={(e) => {
+                setCategoryFilter(e.target.value);
+                setPage(1);
+              }}
+            >
+              <option value="">All categories</option>
+              <option value="travel">Travel</option>
+              <option value="meals">Meals</option>
+              <option value="office_supplies">Office Supplies</option>
+              <option value="software_subscriptions">Software / Subscriptions</option>
+              <option value="event_expenses">Event Expenses</option>
+              <option value="training">Training</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+
+          <div className="filter-field">
+            <label className="filter-field-label">Requester</label>
+            <select
+              value={requesterFilter}
+              onChange={(e) => {
+                setRequesterFilter(e.target.value);
+                setPage(1);
+              }}
+            >
+              <option value="">All requesters</option>
+              {requesters.map((r) => (
+                <option key={r.id} value={r.id}>{r.name}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="filter-field">
+            <label className="filter-field-label">Expense date</label>
+            <div className="filter-range">
+              <input
+                type="date"
+                aria-label="From date"
+                value={dateFrom}
+                onChange={(e) => {
+                  setDateFrom(e.target.value);
+                  setPage(1);
+                }}
+              />
+              <span>to</span>
+              <input
+                type="date"
+                aria-label="To date"
+                value={dateTo}
+                onChange={(e) => {
+                  setDateTo(e.target.value);
+                  setPage(1);
+                }}
+              />
+            </div>
+          </div>
+
+          <div className="filter-field">
+            <label className="filter-field-label">Amount</label>
+            <div className="filter-range">
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                placeholder="Min"
+                aria-label="Minimum amount"
+                style={{ width: 80 }}
+                value={minAmount}
+                onChange={(e) => {
+                  setMinAmount(e.target.value);
+                  setPage(1);
+                }}
+              />
+              <span>to</span>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                placeholder="Max"
+                aria-label="Maximum amount"
+                style={{ width: 80 }}
+                value={maxAmount}
+                onChange={(e) => {
+                  setMaxAmount(e.target.value);
+                  setPage(1);
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
       {!data ? (
         <p>Loading…</p>

@@ -23,6 +23,11 @@ function AdminPage() {
   const [expandedHistory, setExpandedHistory] = useState({}); // userId -> history[] | "loading"
   const [reminderBusy, setReminderBusy] = useState(false);
   const [reminderMessage, setReminderMessage] = useState("");
+  const [roleFilter, setRoleFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [search, setSearch] = useState("");
+  const [sortBy, setSortBy] = useState("created_at");
+  const [order, setOrder] = useState("desc");
 
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [newName, setNewName] = useState("");
@@ -34,12 +39,18 @@ function AdminPage() {
 
   const load = useCallback(async () => {
     try {
-      const result = await api.listUsers({ page, page_size: 10 });
+      const result = await api.listUsers({
+        page, page_size: 10,
+        role: roleFilter || undefined,
+        is_active: statusFilter || undefined,
+        search: search || undefined,
+        sort_by: sortBy, order,
+      });
       setData(result);
     } catch (err) {
       setError(err.message);
     }
-  }, [page]);
+  }, [page, roleFilter, statusFilter, search, sortBy, order]);
 
   useEffect(() => {
     load();
@@ -165,6 +176,64 @@ function AdminPage() {
 
       {reminderMessage && <div className="banner banner-success">{reminderMessage}</div>}
       {error && <div className="banner banner-error">{error}</div>}
+
+      <div className="filter-bar">
+        <div className="filter-field">
+          <label className="filter-field-label">Role</label>
+          <select value={roleFilter} onChange={(e) => { setRoleFilter(e.target.value); setPage(1); }}>
+            <option value="">All roles</option>
+            <option value="requester">Requester</option>
+            <option value="reviewer">Reviewer</option>
+            <option value="admin">Admin</option>
+          </select>
+        </div>
+        <div className="filter-field">
+          <label className="filter-field-label">Status</label>
+          <select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}>
+            <option value="">All accounts</option>
+            <option value="true">Active only</option>
+            <option value="false">Deactivated only</option>
+          </select>
+        </div>
+        <div className="filter-field" style={{ flex: 1, minWidth: 180 }}>
+          <label className="filter-field-label">Search</label>
+          <input
+            type="text"
+            placeholder="Name or email…"
+            value={search}
+            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+          />
+        </div>
+        <div className="filter-field">
+          <label className="filter-field-label">Sort by</label>
+          <select
+            value={`${sortBy}:${order}`}
+            onChange={(e) => {
+              const [nextSortBy, nextOrder] = e.target.value.split(":");
+              setSortBy(nextSortBy);
+              setOrder(nextOrder);
+              setPage(1);
+            }}
+          >
+            <option value="created_at:desc">Newest first</option>
+            <option value="created_at:asc">Oldest first</option>
+            <option value="name:asc">Name: A to Z</option>
+            <option value="email:asc">Email: A to Z</option>
+            <option value="role:asc">Role</option>
+          </select>
+        </div>
+        {(roleFilter || statusFilter || search) && (
+          <div className="filter-field">
+            <label className="filter-field-label">&nbsp;</label>
+            <button
+              className="btn btn-sm"
+              onClick={() => { setRoleFilter(""); setStatusFilter(""); setSearch(""); setPage(1); }}
+            >
+              Clear
+            </button>
+          </div>
+        )}
+      </div>
 
       {showCreateForm && (
         <div className="card" style={{ marginBottom: 20 }}>
