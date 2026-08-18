@@ -826,6 +826,142 @@ def test_dashboard_totals_are_accurate():
     assert sum(data["count_by_status"].values()) >= 1
 
 
+def test_analytics_requester_sees_only_own_data_no_cross_user_views():
+    req_token = login("req@test.com")
+    rev_token = login("rev@test.com")
+
+    create_resp = client.post("/api/requests", headers=auth_headers(req_token), json={
+        "title": "Analytics test travel", "amount": 150, "expense_date": "2026-03-05", "category": "travel",
+    })
+    request_id = create_resp.json()["id"]
+    fake_jpeg = b"\xff\xd8\xff" + b"0" * 20
+    client.post(f"/api/requests/{request_id}/receipt", headers=auth_headers(req_token),
+                files={"file": ("r.jpg", io.BytesIO(fake_jpeg), "image/jpeg")})
+    client.post(f"/api/requests/{request_id}/submit", headers=auth_headers(req_token))
+    client.post(f"/api/requests/{request_id}/approve", headers=auth_headers(rev_token), json={})
+
+    resp = client.get("/api/requests/stats/analytics", headers=auth_headers(req_token))
+    assert resp.status_code == 200
+    data = resp.json()
+
+    assert any(m["month"] == "2026-03" for m in data["monthly_totals"])
+    assert any(c["category"] == "travel" for c in data["by_category"])
+    # requesters don't get cross-user breakdowns -- those only make sense at reviewer level
+    assert data["by_requester"] == []
+    assert data["reviewer_workload"] == []
+
+
+def test_analytics_reviewer_sees_cross_user_breakdowns():
+    req_token = login("req@test.com")
+    rev_token = login("rev@test.com")
+
+    create_resp = client.post("/api/requests", headers=auth_headers(req_token), json={
+        "title": "Analytics test for reviewer view", "amount": 60, "expense_date": "2026-03-10", "category": "meals",
+    })
+    request_id = create_resp.json()["id"]
+    fake_jpeg = b"\xff\xd8\xff" + b"0" * 20
+    client.post(f"/api/requests/{request_id}/receipt", headers=auth_headers(req_token),
+                files={"file": ("r.jpg", io.BytesIO(fake_jpeg), "image/jpeg")})
+    client.post(f"/api/requests/{request_id}/submit", headers=auth_headers(req_token))
+    client.post(f"/api/requests/{request_id}/approve", headers=auth_headers(rev_token), json={})
+
+    resp = client.get("/api/requests/stats/analytics", headers=auth_headers(rev_token))
+    assert resp.status_code == 200
+    data = resp.json()
+
+    assert len(data["by_requester"]) >= 1
+    assert any(w["reviewer_name"] == "Test Reviewer" and w["approved_count"] >= 1 for w in data["reviewer_workload"])
+    assert data["approval_time"]["count"] >= 1
+
+
+def test_analytics_date_range_filters_correctly():
+    token = login("req@test.com")
+    fake_jpeg = b"\xff\xd8\xff" + b"0" * 20
+
+    march_resp_create = client.post("/api/requests", headers=auth_headers(token), json={
+        "title": "March expense", "amount": 40, "expense_date": "2026-03-15", "category": "other",
+    })
+    march_id = march_resp_create.json()["id"]
+    client.post(f"/api/requests/{march_id}/receipt", headers=auth_headers(token),
+                files={"file": ("r.jpg", io.BytesIO(fake_jpeg), "image/jpeg")})
+    client.post(f"/api/requests/{march_id}/submit", headers=auth_headers(token))
+
+    june_resp_create = client.post("/api/requests", headers=auth_headers(token), json={
+        "title": "June expense", "amount": 80, "expense_date": "2026-06-15", "category": "other",
+    })
+    june_id = june_resp_create.json()["id"]
+    client.post(f"/api/requests/{june_id}/receipt", headers=auth_headers(token),
+                files={"file": ("r.jpg", io.BytesIO(fake_jpeg), "image/jpeg")})
+    client.post(f"/api/requests/{june_id}/submit", headers=auth_headers(token))
+
+    march_resp = client.get(
+        "/api/requests/stats/analytics?date_from=2026-03-01&date_to=2026-03-31",
+        headers=auth_headers(token),
+    )
+    assert march_resp.status_code == 200
+    march_data = march_resp.json()
+    march_months = [m["month"] for m in march_data["monthly_totals"]]
+    assert "2026-03" in march_months
+    assert "2026-06" not in march_months
+
+    june_resp = client.get(
+        "/api/requests/stats/analytics?date_from=2026-06-01&date_to=2026-06-30",
+        headers=auth_headers(token),
+    )
+    june_months = [m["month"] for m in june_resp.json()["monthly_totals"]]
+    assert "2026-06" in june_months
+    assert "2026-03" not in june_months
+
+    # no filter -- both should appear
+    all_resp = client.get("/api/requests/stats/analytics", headers=auth_headers(token))
+    all_months = [m["month"] for m in all_resp.json()["monthly_totals"]]
+    assert "2026-03" in all_months
+    assert "2026-06" in all_months
+
+def test_csv_export_returns_real_csv_scoped_to_requester():
+    req_token = login("req@test.com")
+    other_token = login("req2@test.com")
+
+    client.post("/api/requests", headers=auth_headers(req_token), json={
+        "title": "CSV export test item", "amount": 33, "expense_date": "2026-04-01", "category": "other",
+    })
+
+    resp = client.get("/api/requests/export/csv", headers=auth_headers(req_token))
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("text/csv")
+    body = resp.text
+    assert "CSV export test item" in body
+    assert "Title,Amount,Category" in body  # header row present
+
+    # a different requester's export shouldn't contain this row
+    other_resp = client.get("/api/requests/export/csv", headers=auth_headers(other_token))
+    assert "CSV export test item" not in other_resp.text
+
+
+def test_pdf_export_returns_a_real_pdf():
+    token = login("req@test.com")
+    client.post("/api/requests", headers=auth_headers(token), json={
+        "title": "PDF export test item", "amount": 77, "expense_date": "2026-04-02", "category": "other",
+    })
+
+    resp = client.get("/api/requests/export/pdf", headers=auth_headers(token))
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "application/pdf"
+    assert resp.content[:5] == b"%PDF-"
+    assert len(resp.content) > 500  # a real generated document, not an empty stub
+
+
+def test_export_respects_status_filter():
+    token = login("req@test.com")
+    resp = client.get("/api/requests/export/csv?status=approved", headers=auth_headers(token))
+    assert resp.status_code == 200
+    # every data row (skip header) should say "approved" if there's a status column match
+    lines = resp.text.strip().split("\r\n")
+    for line in lines[1:]:
+        if line:
+            assert ",approved," in line
+
+
 def test_search_and_filter():
     token = login("req@test.com")
     resp = client.get("/api/requests?category=meals&page=1&page_size=5", headers=auth_headers(token))

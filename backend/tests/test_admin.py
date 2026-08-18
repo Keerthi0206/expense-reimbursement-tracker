@@ -97,6 +97,22 @@ def test_admin_users_list_supports_pagination_filtering_and_sorting():
     assert bad_role_resp.status_code == 422
 
 
+def test_admin_users_search_matches_name_or_email():
+    admin_token, _ = login("admin1@test.com")
+
+    by_name_resp = client.get("/api/admin/users?search=requester", headers=auth_headers(admin_token))
+    assert by_name_resp.status_code == 200
+    assert len(by_name_resp.json()["items"]) >= 1
+    assert all("requester" in u["name"].lower() for u in by_name_resp.json()["items"])
+
+    by_email_resp = client.get("/api/admin/users?search=@test.com", headers=auth_headers(admin_token))
+    assert by_email_resp.status_code == 200
+    assert len(by_email_resp.json()["items"]) >= 1
+
+    no_match_resp = client.get("/api/admin/users?search=nobodyhasthisname", headers=auth_headers(admin_token))
+    assert no_match_resp.json()["items"] == []
+
+
 def test_reason_is_recorded_for_role_and_status_changes():
     admin_token, admin_id = login("admin1@test.com")
     _, reviewer_id = login("reviewer@test.com")
