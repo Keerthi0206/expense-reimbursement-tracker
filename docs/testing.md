@@ -4,7 +4,7 @@
 
 Two layers of testing were used:
 
-1. **Automated tests** (`backend/tests/test_workflow.py`, `test_admin.py`, and `test_error_handling_and_authorization.py`) — 60 pytest cases run against the real FastAPI app via `TestClient`, sharing one isolated SQLite test database managed by `tests/conftest.py` for the whole session.
+1. **Automated tests** (`backend/tests/test_workflow.py`, `test_admin.py`, and `test_error_handling_and_authorization.py`) — 81 pytest cases run against the real FastAPI app via `TestClient`, sharing one isolated SQLite test database managed by `tests/conftest.py` for the whole session.
 2. **Manual end-to-end smoke testing** via curl against a running server, exercising the exact scenarios in the hackathon's "Minimum Demonstration Scenario" — done during development to catch integration issues (e.g. a JSON-serialization bug in the validation-error handler, a test-isolation bug where two test files silently shared one SQLite engine, and a genuine race condition in status transitions) that unit tests alone didn't surface.
 
 ## Automated test results
@@ -13,6 +13,7 @@ Two layers of testing were used:
 tests/test_admin.py::test_non_admin_cannot_list_users PASSED
 tests/test_admin.py::test_admin_can_list_users_with_full_fields PASSED
 tests/test_admin.py::test_admin_users_list_supports_pagination_filtering_and_sorting PASSED
+tests/test_admin.py::test_admin_users_search_matches_name_or_email PASSED
 tests/test_admin.py::test_reason_is_recorded_for_role_and_status_changes PASSED
 tests/test_admin.py::test_admin_can_change_a_users_role_and_it_is_logged PASSED
 tests/test_admin.py::test_admin_cannot_change_their_own_role PASSED
@@ -20,6 +21,7 @@ tests/test_admin.py::test_admin_can_deactivate_and_reactivate_a_user_with_histor
 tests/test_admin.py::test_admin_cannot_deactivate_self PASSED
 tests/test_admin.py::test_creating_a_user_is_logged_in_history PASSED
 tests/test_admin.py::test_non_admin_cannot_view_or_modify_user_history PASSED
+tests/test_admin.py::test_reminders_go_out_for_stale_pending_requests PASSED
 tests/test_error_handling_and_authorization.py::TestInvalidWorkflowActions::test_cannot_approve_a_draft PASSED
 tests/test_error_handling_and_authorization.py::TestInvalidWorkflowActions::test_cannot_reject_a_draft PASSED
 tests/test_error_handling_and_authorization.py::TestInvalidWorkflowActions::test_cannot_mark_paid_a_draft PASSED
@@ -49,15 +51,21 @@ tests/test_error_handling_and_authorization.py::TestGracefulErrorHandling::test_
 tests/test_workflow.py::test_login_wrong_password_returns_401 PASSED
 tests/test_workflow.py::test_login_unknown_email_returns_401_not_500 PASSED
 tests/test_workflow.py::test_create_request_requires_auth PASSED
+tests/test_workflow.py::test_budget_limit_warning_flag_is_computed PASSED
 tests/test_workflow.py::test_negative_amount_rejected PASSED
 tests/test_workflow.py::test_future_date_rejected PASSED
 tests/test_workflow.py::test_missing_category_rejected PASSED
 tests/test_workflow.py::test_nested_history_is_chronologically_ordered PASSED
+tests/test_workflow.py::test_high_value_request_needs_second_admin_approval PASSED
+tests/test_workflow.py::test_same_person_cannot_give_both_approvals PASSED
+tests/test_workflow.py::test_low_value_request_skips_second_tier_entirely PASSED
+tests/test_workflow.py::test_can_reject_a_request_awaiting_second_approval PASSED
 tests/test_workflow.py::test_full_workflow_create_to_paid PASSED
 tests/test_workflow.py::test_requester_can_cancel_before_approval PASSED
 tests/test_workflow.py::test_cannot_cancel_after_approval PASSED
 tests/test_workflow.py::test_cancelling_a_claimed_request_notifies_the_reviewer PASSED
 tests/test_workflow.py::test_double_submit_race_is_prevented PASSED
+tests/test_workflow.py::test_can_edit_and_resubmit_after_rejection PASSED
 tests/test_workflow.py::test_reject_requires_reason PASSED
 tests/test_workflow.py::test_requester_cannot_see_others_requests PASSED
 tests/test_workflow.py::test_approved_request_can_be_reverted_but_not_after_paid PASSED
@@ -66,12 +74,25 @@ tests/test_workflow.py::test_request_info_flow_and_resubmission PASSED
 tests/test_workflow.py::test_submitting_a_request_notifies_active_reviewers_and_admins PASSED
 tests/test_workflow.py::test_notifications_are_paginated_and_scoped_to_the_user PASSED
 tests/test_workflow.py::test_dashboard_totals_are_accurate PASSED
+tests/test_workflow.py::test_analytics_requester_sees_only_own_data_no_cross_user_views PASSED
+tests/test_workflow.py::test_analytics_reviewer_sees_cross_user_breakdowns PASSED
+tests/test_workflow.py::test_analytics_date_range_filters_correctly PASSED
+tests/test_workflow.py::test_csv_export_returns_real_csv_scoped_to_requester PASSED
+tests/test_workflow.py::test_pdf_export_returns_a_real_pdf PASSED
+tests/test_workflow.py::test_export_respects_status_filter PASSED
 tests/test_workflow.py::test_search_and_filter PASSED
+tests/test_workflow.py::test_duplicate_check_finds_matching_amount_and_date PASSED
 tests/test_workflow.py::test_sorting_requests_by_amount PASSED
 tests/test_workflow.py::test_request_history_has_its_own_endpoint PASSED
 tests/test_workflow.py::test_deactivated_account_cannot_log_in PASSED
+tests/test_workflow.py::test_extract_receipt_preview_before_request_exists PASSED
+tests/test_workflow.py::test_extract_receipt_preview_rejects_bad_file_type PASSED
+tests/test_workflow.py::test_receipt_analysis_requires_a_receipt_first PASSED
+tests/test_workflow.py::test_receipt_analysis_flags_a_genuine_mismatch PASSED
+tests/test_workflow.py::test_receipt_analysis_no_mismatch_when_values_actually_match PASSED
+tests/test_workflow.py::test_receipt_analysis_respects_normal_access_control PASSED
 
-======================= 60 passed in 29.22s =======================
+======================= 81 passed in 40.07s =======================
 ```
 
 Run it yourself: `cd backend && pytest -v`

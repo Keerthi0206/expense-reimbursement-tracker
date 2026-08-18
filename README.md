@@ -12,6 +12,7 @@ A full-stack reimbursement tracker built for the CDF SDE Hackathon. Requesters c
 - Request more information: a reviewer can send a submitted request back with a required message instead of approving or rejecting outright — the requester edits and resubmits it, cleanly modeled as its own status (`changes_requested`), not a bolt-on comment
 - Approval reversal: a reviewer can reject an approved-but-unpaid request with a reason to correct a mistake — locked out entirely once the request is Paid
 - Cancel: a requester can cancel their own request any time before a reviewer approves or rejects it, with an optional reason — implemented as a real `cancelled` status (not a hard delete), so the record and its history stay intact rather than disappearing from the audit trail
+- Analytics & reporting: monthly spending trends, breakdowns by category and (for reviewers/admins) by requester, approval-time metrics, reviewer workload, and CSV/PDF export — all role-scoped the same way as everything else (requesters only ever see their own data)
 - Receipt intelligence: real OCR (Tesseract, local — no external API key needed) reads amount/date/merchant off an uploaded receipt (image or PDF, including scanned PDFs) and offers them as suggestions on the New Request form — never auto-filled, the requester clicks to apply each one. Inline receipt thumbnails throughout, plus an on-demand consistency check on the detail page that flags if the submitted amount/date doesn't match what the receipt actually shows
 - Light/dark theme, toggleable from the nav or login page, remembered across visits — every color in the app comes from a shared token system, not hardcoded per component, so the whole UI (including status stamps, buttons, and the always-dark topbar "cover") switches consistently rather than a partial reskin
 - Every status transition (submit, approve, reject, mark paid, etc.) is a single atomic database update, not a read-then-write — verified safe against real concurrent requests (double-clicks, multiple tabs), not just sequential ones
@@ -26,7 +27,7 @@ A full-stack reimbursement tracker built for the CDF SDE Hackathon. Requesters c
 - Full request history / audit trail
 - In-app notifications on every meaningful status change — including reviewers/admins getting notified the moment a new request is submitted, not just requesters being notified after someone acts on their request — with a dedicated notifications page (unread badge in the nav, mark-as-read individually or all at once, links back to the related request)
 - JWT auth, hashed passwords, secrets via environment variables, no stack traces leaked to the client
-- Automated test suite (`backend/tests/`, 78 tests across `test_workflow.py`, `test_admin.py`, `test_error_handling_and_authorization.py`, and `test_email.py`, covering the full reimbursement workflow, validation, RBAC, approval reversal, resubmission after rejection, cancellation, the two-tier approval workflow, duplicate-request detection, budget-limit warnings, receipt OCR extraction and consistency checks, request reminders, the reviewer-claims-request transition, request-info/resubmission, admin user/role/status management with audit history, sorting and pagination on both list endpoints, the standalone request-history endpoint, a real concurrency race condition found and fixed during development, the pluggable email integration's failure-handling behavior, and dedicated coverage of invalid-workflow-action prevention, unauthorized-action handling, and graceful error handling — including SQL-injection-style input)
+- Automated test suite (`backend/tests/`, 81 tests across `test_workflow.py`, `test_admin.py`, and `test_error_handling_and_authorization.py`, covering the full reimbursement workflow, validation, RBAC, approval reversal, resubmission after rejection, cancellation, the two-tier approval workflow, duplicate-request detection, budget-limit warnings, receipt OCR extraction and consistency checks, request reminders, the reviewer-claims-request transition, request-info/resubmission, admin user/role/status management with audit history, sorting and pagination on both list endpoints, the standalone request-history endpoint, a real concurrency race condition found and fixed during development, and dedicated coverage of invalid-workflow-action prevention, unauthorized-action handling, and graceful error handling — including SQL-injection-style input)
 - Fictional seed data covering every workflow state
 
 ## Tech stack
@@ -72,12 +73,15 @@ pytest -v
 ### Docker (one command, both services)
 
 ```bash
+cd backend
+cp .env.example .env   # fill in real values if you want email, custom thresholds, etc.
+cd ..
 docker compose up --build
 ```
 
-Backend at `http://localhost:8000`, frontend at `http://localhost:3000`. Uses SQLite by default (mounted to a named volume so data survives container restarts) and seeds demo data automatically on first run — no separate steps needed. To use Postgres instead for closer production parity, swap `DATABASE_URL` in `docker-compose.yml` and add a `db` service (see the Deployment section below for the connection string format).
+Backend at `http://localhost:8000`, frontend at `http://localhost:3000`. Uses SQLite by default (mounted to a named volume so data survives container restarts) and seeds demo data automatically on first run — no separate steps needed. `backend/.env` is optional (Docker Compose won't fail if it's missing), but creating it first is how you'd turn on real email delivery or change any of the other configurable thresholds — see "Real email delivery" below. To use Postgres instead for closer production parity, swap `DATABASE_URL` in `docker-compose.yml` and add a `db` service (see the Deployment section below for the connection string format).
 
-**Honest note:** this Docker setup was built and reasoned through carefully — the exact runtime environment variables and startup command were verified against a real running server first — but wasn't tested inside an actual Docker container, since this development environment doesn't have a Docker daemon available. If `docker compose up --build` doesn't work exactly as described, that's useful to know — please flag it.
+**Honest note:** this Docker setup was built and reasoned through carefully — the exact runtime environment variables and startup command were verified against a real running server first — and has since been run successfully in practice, including working through a real stale-database-schema issue after a mid-project schema change (fixed with `docker compose down -v` to clear the old volume). I still haven't run it myself in this development environment, which has no Docker daemon available — but it's had genuine real-world use at this point, not just a theoretical setup.
 
 ## Deployment
 
