@@ -1,10 +1,19 @@
 # Run: docker compose up --build
 # Uses SQLite by default to keep this simple (no separate db container).
 # For Postgres parity, swap DATABASE_URL below and add a db service.
+#
+# backend/.env (create it from backend/.env.example) supplies anything not
+# explicitly listed under `environment:` below -- e.g. reminder thresholds
+# or the second-approval amount. The hardcoded values under `environment:`
+# always win over env_file for the same key, so those stay as safe defaults
+# regardless of what's in .env.
 
 services:
   backend:
     build: ./backend
+    env_file:
+      - path: backend/.env
+        required: false
     environment:
       DATABASE_URL: sqlite:////app/data/expense_tracker.db
       SECRET_KEY: dev-secret-change-me-in-production

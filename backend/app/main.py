@@ -2,6 +2,10 @@ import os
 import logging
 from contextlib import asynccontextmanager
 
+from dotenv import load_dotenv
+# must run before any app.core import -- those read env vars at import time
+load_dotenv()
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse

@@ -11,9 +11,12 @@ from sqlalchemy import update
 from app.core.database import get_db
 from app.core.security import get_current_user, require_role
 from app.core.files import save_receipt, _detect_type, MAX_FILE_SIZE
-from app.core.email import send_email
 from app.core.workflow_rules import requires_second_approval
 from app.core.receipt_extraction import extract_receipt_suggestions, get_file_metadata
+from app.core.analytics import (
+    compute_monthly_totals, compute_by_category, compute_by_requester,
+    compute_approval_time, compute_reviewer_workload, compute_average_request_amount,
+)
 from app.models.models import (
     ReimbursementRequest, RequestHistory, Notification, User,
     StatusEnum, RoleEnum, CategoryEnum,
@@ -22,7 +25,7 @@ from app.schemas.schemas import (
     RequestCreate, RequestUpdate, RequestOut, RequestDetailOut, RequesterOut,
     PaginatedRequests, RejectDecision, ReviewDecision, InfoRequest, CancelRequest,
     DashboardSummary, PaginatedHistory, DuplicateCandidateOut,
-    ReceiptSuggestionOut, ReceiptAnalysisOut,
+    ReceiptSuggestionOut, ReceiptAnalysisOut, AnalyticsOut,
 )
 
 router = APIRouter(prefix="/api/requests", tags=["requests"])
@@ -40,11 +43,6 @@ def _log_history(db: Session, request_id: str, user_id: str, action: str,
 
 def _notify(db: Session, user_id: str, request_id: str, message: str):
     db.add(Notification(user_id=user_id, request_id=request_id, message=message))
-    # Best-effort email alongside the in-app notification -- never lets a mail
-    # failure affect the request action that triggered it (see core/email.py).
-    recipient = db.query(User).filter(User.id == user_id).first()
-    if recipient:
-        send_email(recipient.email, "CDF Expense Tracker update", message)
 
 
 def _get_owned_or_403(db: Session, request_id: str, current_user: User) -> ReimbursementRequest:
@@ -753,4 +751,148 @@ def dashboard(
         total_pending=total_pending,
         total_paid=total_paid,
         count_by_status=count_by_status,
+    )
+
+
+@router.get("/stats/analytics", response_model=AnalyticsOut)
+def analytics(
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Requesters get their own monthly/category breakdown and average
+    request size. Reviewers/admins get the same plus the cross-user views
+    (by_requester, reviewer_workload) that only make sense at that level.
+    date_from/date_to optionally scope everything to a specific window
+    (e.g. one month) -- unfiltered by default, showing all-time data."""
+    query = db.query(ReimbursementRequest)
+    if current_user.role == RoleEnum.requester:
+        query = query.filter(ReimbursementRequest.requester_id == current_user.id)
+    if date_from:
+        query = query.filter(ReimbursementRequest.expense_date >= date_from)
+    if date_to:
+        query = query.filter(ReimbursementRequest.expense_date <= date_to)
+    all_requests = query.all()
+
+    is_reviewer_or_admin = current_user.role in (RoleEnum.reviewer, RoleEnum.admin)
+
+    return AnalyticsOut(
+        monthly_totals=compute_monthly_totals(all_requests),
+        by_category=compute_by_category(all_requests),
+        by_requester=compute_by_requester(all_requests) if is_reviewer_or_admin else [],
+        approval_time=compute_approval_time(all_requests),
+        reviewer_workload=compute_reviewer_workload(all_requests) if is_reviewer_or_admin else [],
+        average_request_amount=compute_average_request_amount(all_requests),
+    )
+
+
+def _scoped_export_query(current_user: User, db: Session, status_filter: Optional[str],
+                          category_filter: Optional[str], date_from: Optional[date], date_to: Optional[date]):
+    query = db.query(ReimbursementRequest)
+    if current_user.role == RoleEnum.requester:
+        query = query.filter(ReimbursementRequest.requester_id == current_user.id)
+    if status_filter:
+        query = query.filter(ReimbursementRequest.status == status_filter)
+    if category_filter:
+        query = query.filter(ReimbursementRequest.category == category_filter)
+    if date_from:
+        query = query.filter(ReimbursementRequest.expense_date >= date_from)
+    if date_to:
+        query = query.filter(ReimbursementRequest.expense_date <= date_to)
+    return query.order_by(ReimbursementRequest.expense_date.desc())
+
+
+@router.get("/export/csv")
+def export_csv(
+    status_filter: Optional[str] = Query(None, alias="status"),
+    category: Optional[str] = None,
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    import csv
+    import io
+    from fastapi.responses import StreamingResponse
+
+    requests_list = _scoped_export_query(current_user, db, status_filter, category, date_from, date_to).all()
+
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow([
+        "Title", "Amount", "Category", "Expense Date", "Status", "Requester", "Requester Email",
+        "Submitted At", "Reviewed At", "Paid At",
+    ])
+    for r in requests_list:
+        writer.writerow([
+            r.title, f"{r.amount:.2f}", r.category.value, r.expense_date.isoformat(), r.status.value,
+            r.requester.name, r.requester.email,
+            r.submitted_at.isoformat() if r.submitted_at else "",
+            r.reviewed_at.isoformat() if r.reviewed_at else "",
+            r.paid_at.isoformat() if r.paid_at else "",
+        ])
+    buf.seek(0)
+    return StreamingResponse(
+        iter([buf.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=expense_requests.csv"},
+    )
+
+
+@router.get("/export/pdf")
+def export_pdf(
+    status_filter: Optional[str] = Query(None, alias="status"),
+    category: Optional[str] = None,
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    import io
+    from fastapi.responses import StreamingResponse
+    from reportlab.lib.pagesizes import letter
+    from reportlab.lib import colors
+    from reportlab.lib.units import inch
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+    from reportlab.lib.styles import getSampleStyleSheet
+
+    requests_list = _scoped_export_query(current_user, db, status_filter, category, date_from, date_to).all()
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=letter, title="Expense Report")
+    styles = getSampleStyleSheet()
+    elements = [
+        Paragraph("CDF Expense & Reimbursement Report", styles["Title"]),
+        Paragraph(f"Generated {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')} by {current_user.name}", styles["Normal"]),
+        Spacer(1, 16),
+    ]
+
+    total = sum(r.amount for r in requests_list)
+    elements.append(Paragraph(f"{len(requests_list)} request(s), totaling ${total:,.2f}", styles["Normal"]))
+    elements.append(Spacer(1, 12))
+
+    table_data = [["Title", "Amount", "Category", "Date", "Status", "Requester"]]
+    for r in requests_list:
+        table_data.append([
+            r.title[:30], f"${r.amount:,.2f}", r.category.value.replace("_", " "),
+            r.expense_date.isoformat(), r.status.value.replace("_", " "), r.requester.name,
+        ])
+
+    table = Table(table_data, repeatRows=1, colWidths=[1.6 * inch, 0.8 * inch, 1.1 * inch, 0.9 * inch, 1.0 * inch, 1.1 * inch])
+    table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#17241d")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTSIZE", (0, 0), (-1, -1), 8),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f4f6f4")]),
+    ]))
+    elements.append(table)
+    doc.build(elements)
+    buf.seek(0)
+
+    return StreamingResponse(
+        buf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": "attachment; filename=expense_report.pdf"},
     )

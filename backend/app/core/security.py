@@ -17,10 +17,9 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 12  # 12 hours, fine for a demo/hackathon app
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-# Using HTTPBearer instead of OAuth2PasswordBearer since our login endpoint
-# takes a JSON body, not the OAuth2 form fields. Also override __call__ to
-# raise 401 instead of the library's default 403 when there's no token at all
-# -- 403 should mean "logged in but not allowed", not "not logged in".
+# HTTPBearer instead of OAuth2PasswordBearer since login takes a JSON body,
+# not OAuth2 form fields. Also overrides __call__ so a missing token is 401,
+# not the library's default 403 -- 403 should mean "not allowed", not "not logged in".
 class Bearer401(HTTPBearer):
     async def __call__(self, request: Request):
         try:

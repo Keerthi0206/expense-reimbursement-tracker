@@ -28,6 +28,7 @@ def _log_account_history(db: Session, user_id: str, performed_by_id: str, action
 def list_users(
     role: Optional[str] = None,
     is_active: Optional[bool] = None,
+    search: Optional[str] = None,
     sort_by: str = Query("created_at", pattern="^(created_at|name|email|role)$"),
     order: str = Query("desc", pattern="^(asc|desc)$"),
     page: int = Query(1, ge=1),
@@ -45,6 +46,9 @@ def list_users(
         query = query.filter(User.role == role_enum)
     if is_active is not None:
         query = query.filter(User.is_active == is_active)
+    if search:
+        like = f"%{search}%"
+        query = query.filter((User.name.ilike(like)) | (User.email.ilike(like)))
 
     total = query.count()
     total_pages = max(1, math.ceil(total / page_size))
