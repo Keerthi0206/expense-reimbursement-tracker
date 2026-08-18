@@ -1,0 +1,33 @@
+# Run: docker compose up --build
+# Uses SQLite by default to keep this simple (no separate db container).
+# For Postgres parity, swap DATABASE_URL below and add a db service.
+
+services:
+  backend:
+    build: ./backend
+    environment:
+      DATABASE_URL: sqlite:////app/data/expense_tracker.db
+      SECRET_KEY: dev-secret-change-me-in-production
+      ALLOWED_ORIGINS: http://localhost:3000
+      UPLOAD_DIR: /app/uploads/receipts
+    volumes:
+      - backend_data:/app/data
+      - backend_uploads:/app/uploads
+    ports:
+      - "8000:8000"
+    # seed.py is a no-op if data exists, so restarts are safe
+    command: sh -c "python seed.py; uvicorn app.main:app --host 0.0.0.0 --port 8000"
+
+  frontend:
+    build:
+      context: ./src/frontend
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+volumes:
+  backend_data:
+  backend_uploads:
