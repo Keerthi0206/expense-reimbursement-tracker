@@ -72,6 +72,9 @@ export default function Nav() {
             Admin
           </Link>
         )}
+        <Link href="/analytics" className={pathname === "/analytics" ? "active" : ""}>
+          Analytics
+        </Link>
         <Link
           href="/notifications"
           className={pathname === "/notifications" ? "active" : ""}

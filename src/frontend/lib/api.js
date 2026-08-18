@@ -111,4 +111,30 @@ export const api = {
   updateUserStatus: (id, is_active, reason) =>
     request(`/api/admin/users/${id}/status`, { method: "PATCH", body: { is_active, reason } }),
   triggerReminders: () => request("/api/admin/trigger-reminders", { method: "POST" }),
+  analytics: (params = {}) => {
+    const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v)).toString();
+    return request(`/api/requests/stats/analytics${qs ? `?${qs}` : ""}`);
+  },
+  exportCsvUrl: (params = {}) => {
+    const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v)).toString();
+    return `${API_URL}/api/requests/export/csv${qs ? `?${qs}` : ""}`;
+  },
+  exportPdfUrl: (params = {}) => {
+    const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v)).toString();
+    return `${API_URL}/api/requests/export/pdf${qs ? `?${qs}` : ""}`;
+  },
+  downloadFile: async (url, filename) => {
+    const token = getToken();
+    const res = await fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+    if (!res.ok) throw new ApiError("Export failed", res.status);
+    const blob = await res.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = objectUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(objectUrl);
+  },
 };
