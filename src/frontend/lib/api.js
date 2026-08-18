@@ -62,6 +62,12 @@ export const api = {
     const blob = await res.blob();
     return URL.createObjectURL(blob);
   },
+  extractReceiptPreview: (file) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    return request("/api/requests/meta/extract-receipt", { method: "POST", body: formData, isForm: true });
+  },
+  getReceiptAnalysis: (id) => request(`/api/requests/${id}/receipt-analysis`),
   submitRequest: (id) => request(`/api/requests/${id}/submit`, { method: "POST" }),
   listRequests: (params = {}) => {
     const qs = new URLSearchParams(
@@ -77,6 +83,11 @@ export const api = {
   markPaid: (id) => request(`/api/requests/${id}/mark-paid`, { method: "POST" }),
   dashboard: () => request("/api/requests/stats/dashboard"),
   listRequesters: () => request("/api/requests/meta/requesters"),
+  checkDuplicate: (amount, expenseDate, excludeId) => {
+    const qs = new URLSearchParams({ amount, expense_date: expenseDate });
+    if (excludeId) qs.set("exclude_id", excludeId);
+    return request(`/api/requests/meta/check-duplicate?${qs.toString()}`);
+  },
 
   notifications: (params = {}) => {
     const qs = new URLSearchParams(
@@ -99,4 +110,5 @@ export const api = {
     request(`/api/admin/users/${id}/role`, { method: "PATCH", body: { role, reason } }),
   updateUserStatus: (id, is_active, reason) =>
     request(`/api/admin/users/${id}/status`, { method: "PATCH", body: { is_active, reason } }),
+  triggerReminders: () => request("/api/admin/trigger-reminders", { method: "POST" }),
 };

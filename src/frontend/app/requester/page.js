@@ -63,6 +63,7 @@ function RequesterHome() {
             <option value="submitted">Submitted only</option>
             <option value="under_review">Under Review only</option>
             <option value="changes_requested">Changes Requested</option>
+            <option value="pending_second_approval">Pending 2nd Approval</option>
             <option value="approved">Approved</option>
             <option value="rejected">Rejected</option>
             <option value="paid">Paid</option>

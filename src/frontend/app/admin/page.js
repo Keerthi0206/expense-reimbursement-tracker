@@ -21,6 +21,8 @@ function AdminPage() {
   const [error, setError] = useState("");
   const [busyId, setBusyId] = useState(null);
   const [expandedHistory, setExpandedHistory] = useState({}); // userId -> history[] | "loading"
+  const [reminderBusy, setReminderBusy] = useState(false);
+  const [reminderMessage, setReminderMessage] = useState("");
 
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [newName, setNewName] = useState("");
@@ -46,10 +48,14 @@ function AdminPage() {
   const users = data?.items || [];
 
   async function handleRoleChange(userId, newRoleValue) {
+    const reason = window.prompt(
+      `Optional: why are you changing this user's role to "${newRoleValue}"? (Cancel to abort the change)`
+    );
+    if (reason === null) return; // user hit Cancel — abort the whole change
     setBusyId(userId);
     setError("");
     try {
-      await api.updateUserRole(userId, newRoleValue);
+      await api.updateUserRole(userId, newRoleValue, reason || undefined);
       await load();
     } catch (err) {
       setError(err.message);
@@ -59,10 +65,15 @@ function AdminPage() {
   }
 
   async function handleStatusToggle(userId, currentlyActive) {
+    const action = currentlyActive ? "deactivating" : "activating";
+    const reason = window.prompt(
+      `Optional: why are you ${action} this account? (Cancel to abort)`
+    );
+    if (reason === null) return;
     setBusyId(userId);
     setError("");
     try {
-      await api.updateUserStatus(userId, !currentlyActive);
+      await api.updateUserStatus(userId, !currentlyActive, reason || undefined);
       await load();
     } catch (err) {
       setError(err.message);
@@ -91,6 +102,24 @@ function AdminPage() {
         delete next[userId];
         return next;
       });
+    }
+  }
+
+  async function handleTriggerReminders() {
+    setReminderBusy(true);
+    setReminderMessage("");
+    setError("");
+    try {
+      const result = await api.triggerReminders();
+      setReminderMessage(
+        result.reminders_sent === 0
+          ? `No requests have been pending longer than ${result.threshold_days} days.`
+          : `Sent reminders for ${result.reminders_sent} request(s) pending over ${result.threshold_days} days.`
+      );
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setReminderBusy(false);
     }
   }
 
@@ -124,11 +153,17 @@ function AdminPage() {
           <div className="eyebrow">Administration</div>
           <h1>User Accounts</h1>
         </div>
-        <button className="btn" onClick={() => setShowCreateForm((v) => !v)}>
-          {showCreateForm ? "Cancel" : "+ New user"}
-        </button>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <button className="btn btn-sm" onClick={handleTriggerReminders} disabled={reminderBusy}>
+            {reminderBusy ? "Checking…" : "Send pending-review reminders now"}
+          </button>
+          <button className="btn" onClick={() => setShowCreateForm((v) => !v)}>
+            {showCreateForm ? "Cancel" : "+ New user"}
+          </button>
+        </div>
       </div>
 
+      {reminderMessage && <div className="banner banner-success">{reminderMessage}</div>}
       {error && <div className="banner banner-error">{error}</div>}
 
       {showCreateForm && (
@@ -233,6 +268,11 @@ function AdminPage() {
                             <> — {h.previous_value} → {h.new_value}</>
                           )}
                           {!h.previous_value && h.new_value && <> — {h.new_value}</>}
+                          {h.reason && (
+                            <span style={{ display: "block", color: "var(--ink-soft)", fontStyle: "italic" }}>
+                              &ldquo;{h.reason}&rdquo;
+                            </span>
+                          )}
                         </span>
                       </div>
                     ))

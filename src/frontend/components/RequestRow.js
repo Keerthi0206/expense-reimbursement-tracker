@@ -31,7 +31,23 @@ export default function RequestRow({ request, showRequester = false }) {
           {isPending && waiting !== null ? ` · waiting ${waiting}d` : ""}
         </div>
       </div>
-      <div className="ledger-amount mono">${request.amount.toFixed(2)}</div>
+      <div className="ledger-amount mono">
+        ${request.amount.toFixed(2)}
+        {request.exceeds_budget && (
+          <span
+            title={`Exceeds the typical $${request.budget_limit.toFixed(0)} limit for this category`}
+            style={{
+              display: "inline-block",
+              marginLeft: 6,
+              fontSize: "0.7rem",
+              color: "var(--stamp-ochre)",
+              verticalAlign: "middle",
+            }}
+          >
+            ⚠
+          </span>
+        )}
+      </div>
       <StatusStamp status={request.status} />
     </Link>
   );

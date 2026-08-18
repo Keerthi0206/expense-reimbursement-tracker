@@ -452,6 +452,10 @@ textarea {
   color: var(--stamp-ochre);
   background: var(--stamp-ochre-soft);
 }
+.stamp-pending_second_approval {
+  color: var(--badge-purple);
+  background: var(--badge-purple-soft);
+}
 .stamp-rejected {
   color: var(--stamp-brick);
   background: var(--stamp-brick-soft);
@@ -488,6 +492,7 @@ textarea {
 .ledger-row.stripe-draft { border-left-color: var(--stamp-slate); }
 .ledger-row.stripe-submitted, .ledger-row.stripe-under_review { border-left-color: var(--stamp-blue); }
 .ledger-row.stripe-changes_requested { border-left-color: var(--stamp-ochre); }
+.ledger-row.stripe-pending_second_approval { border-left-color: var(--badge-purple); }
 .ledger-row.stripe-approved { border-left-color: var(--stamp-teal); }
 .ledger-row.stripe-rejected { border-left-color: var(--stamp-brick); }
 .ledger-row.stripe-paid { border-left-color: var(--stamp-paid); }

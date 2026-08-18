@@ -24,6 +24,8 @@ function RequestDetail() {
   const [infoMessage, setInfoMessage] = useState("");
   const [showInfoForm, setShowInfoForm] = useState(false);
   const [receiptUrl, setReceiptUrl] = useState(null);
+  const [receiptAnalysis, setReceiptAnalysis] = useState(null);
+  const [analyzingReceipt, setAnalyzingReceipt] = useState(false);
 
   // Draft-editing state (only used when the owner is editing their own draft)
   const [editTitle, setEditTitle] = useState("");
@@ -52,15 +54,38 @@ function RequestDetail() {
     load();
   }, [load]);
 
+  // Auto-fetch an inline thumbnail for image receipts once we know the
+  // request has one -- PDFs stay as a plain "View" link/button below,
+  // since inline PDF preview isn't worth the added complexity here.
+  useEffect(() => {
+    if (!request?.receipt_filename) return;
+    const isImage = /\.(jpe?g|png)$/i.test(request.receipt_filename);
+    if (!isImage) return;
+    let cancelled = false;
+    api.fetchReceiptBlobUrl(id).then((url) => {
+      if (!cancelled) setReceiptUrl(url);
+    }).catch(() => {
+      // Non-critical -- the "View receipt" button still works as a fallback.
+    });
+    return () => { cancelled = true; };
+  }, [request?.receipt_filename, id]);
+
   const isReviewer = user && (user.role === "reviewer" || user.role === "admin");
   const isOwner = request && user && request.requester.id === user.id;
   // Owner can edit while it's a draft, or while the reviewer has sent it back for more info.
-  const isOwnerEditable = isOwner && request && ["draft", "changes_requested"].includes(request.status);
+  const isOwnerEditable =
+    isOwner && request && ["draft", "changes_requested", "rejected"].includes(request.status);
   const canReviewSubmitted =
     isReviewer && request && !isOwner && ["submitted", "under_review"].includes(request.status);
   const canRequestInfo = canReviewSubmitted; // same eligibility as approve/reject
-  // A reviewer can revoke a mistaken approval (reject with a reason) any time before payment.
-  const canRevokeApproval = isReviewer && request && !isOwner && request.status === "approved";
+  // Second-tier approval (high-value/training) needs an admin -- backend enforces
+  // the "not the same person as first approval" rule, shown here to any admin
+  const canGiveSecondApproval =
+    user && user.role === "admin" && request && !isOwner && request.status === "pending_second_approval";
+  // A reviewer can revoke a mistaken approval (reject with a reason) any time before payment,
+  // including while a second approval is still pending.
+  const canRevokeApproval =
+    isReviewer && request && !isOwner && ["approved", "pending_second_approval"].includes(request.status);
   const canMarkPaid = isReviewer && request && !isOwner && request.status === "approved";
   // Owner can cancel any time before a reviewer has made a final decision.
   const canCancel =
@@ -73,6 +98,19 @@ function RequestDetail() {
       window.open(url, "_blank");
     } catch (err) {
       setError(err.message);
+    }
+  }
+
+  async function handleCheckReceiptConsistency() {
+    setAnalyzingReceipt(true);
+    setError("");
+    try {
+      const result = await api.getReceiptAnalysis(id);
+      setReceiptAnalysis(result);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setAnalyzingReceipt(false);
     }
   }
 
@@ -288,14 +326,69 @@ function RequestDetail() {
         <div style={{ marginTop: 16 }}>
           <div className="eyebrow">Receipt</div>
           {request.receipt_filename ? (
-            <button className="btn btn-sm" onClick={handleViewReceipt}>
-              View {request.receipt_filename}
-            </button>
+            <div style={{ display: "flex", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+              {receiptUrl && /\.(jpe?g|png)$/i.test(request.receipt_filename) && (
+                <img
+                  src={receiptUrl}
+                  alt="Receipt"
+                  onClick={handleViewReceipt}
+                  style={{ width: 90, height: 90, objectFit: "cover", borderRadius: 4, border: "1px solid var(--line)", cursor: "pointer" }}
+                />
+              )}
+              <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-start" }}>
+                <button className="btn btn-sm" onClick={handleViewReceipt}>
+                  View {request.receipt_filename}
+                </button>
+                <button className="btn btn-sm" onClick={handleCheckReceiptConsistency} disabled={analyzingReceipt}>
+                  {analyzingReceipt ? "Checking…" : "Check receipt against submitted values"}
+                </button>
+              </div>
+            </div>
           ) : (
             <span style={{ color: "var(--ink-soft)" }}>No receipt attached</span>
           )}
+
+          {receiptAnalysis && (
+            <div className="card" style={{ marginTop: 10, background: "var(--paper)" }}>
+              <div style={{ fontSize: "0.78rem", color: "var(--ink-soft)", marginBottom: 8 }}>
+                {receiptAnalysis.metadata.width && `${receiptAnalysis.metadata.width}×${receiptAnalysis.metadata.height}px · `}
+                {receiptAnalysis.metadata.size_kb} KB
+                {receiptAnalysis.metadata.page_count && ` · ${receiptAnalysis.metadata.page_count} page(s)`}
+              </div>
+              {!receiptAnalysis.amount_mismatch && !receiptAnalysis.date_mismatch ? (
+                <p style={{ margin: 0, fontSize: "0.85rem", color: "var(--stamp-teal)" }}>
+                  ✓ The receipt appears to match the submitted amount and date.
+                </p>
+              ) : (
+                <div style={{ fontSize: "0.85rem" }}>
+                  <strong style={{ color: "var(--stamp-brick)" }}>Possible mismatch detected:</strong>
+                  {receiptAnalysis.amount_mismatch && (
+                    <p style={{ margin: "4px 0" }}>
+                      Submitted amount is ${receiptAnalysis.submitted_amount.toFixed(2)}, but the receipt
+                      appears to show ${receiptAnalysis.suggestion.suggested_amount.toFixed(2)}.
+                    </p>
+                  )}
+                  {receiptAnalysis.date_mismatch && (
+                    <p style={{ margin: "4px 0" }}>
+                      Submitted date is {receiptAnalysis.submitted_date}, but the receipt appears to show{" "}
+                      {receiptAnalysis.suggestion.suggested_date}.
+                    </p>
+                  )}
+                  <p style={{ margin: "4px 0 0", color: "var(--ink-soft)", fontSize: "0.78rem" }}>
+                    This is an automated read of the receipt image and can be wrong — use judgment,
+                    not a rejection reason by itself.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
+        {request.exceeds_budget && (
+          <div className="banner" style={{ marginTop: 16, background: "var(--stamp-ochre-soft)", color: "var(--stamp-ochre)", border: "1px solid var(--stamp-ochre)" }}>
+            <strong>Over budget:</strong> this exceeds the typical ${request.budget_limit.toFixed(0)} limit for {request.category.replace(/_/g, " ")}.
+          </div>
+        )}
         {request.status === "rejected" && request.rejection_reason && (
           <div className="banner banner-error" style={{ marginTop: 16 }}>
             <strong>Rejection reason:</strong> {request.rejection_reason}
@@ -316,11 +409,20 @@ function RequestDetail() {
       {isOwnerEditable && (
         <div className="card">
           <div className="eyebrow" style={{ marginBottom: 12 }}>
-            {request.status === "changes_requested" ? "Update and resubmit" : "Edit draft"}
+            {request.status === "changes_requested"
+              ? "Update and resubmit"
+              : request.status === "rejected"
+              ? "Fix and resubmit"
+              : "Edit draft"}
           </div>
           {request.status === "changes_requested" && (
             <p style={{ fontSize: "0.85rem", color: "var(--ink-soft)", marginTop: 0, marginBottom: 16 }}>
               Address the reviewer&rsquo;s note above, then resubmit for review.
+            </p>
+          )}
+          {request.status === "rejected" && (
+            <p style={{ fontSize: "0.85rem", color: "var(--ink-soft)", marginTop: 0, marginBottom: 16 }}>
+              Address the rejection reason above, then resubmit for review.
             </p>
           )}
           <div className="field">
@@ -394,8 +496,8 @@ function RequestDetail() {
             </button>
             <button className="btn btn-primary" onClick={handleSubmitDraft} disabled={busy}>
               {busy
-                ? (request.status === "changes_requested" ? "Resubmitting…" : "Submitting…")
-                : (request.status === "changes_requested" ? "Resubmit for review" : "Submit for review")}
+                ? (["changes_requested", "rejected"].includes(request.status) ? "Resubmitting…" : "Submitting…")
+                : (["changes_requested", "rejected"].includes(request.status) ? "Resubmit for review" : "Submit for review")}
             </button>
           </div>
         </div>
@@ -484,6 +586,31 @@ function RequestDetail() {
         </div>
       )}
 
+      {canGiveSecondApproval && (
+        <div className="card">
+          <div className="eyebrow" style={{ marginBottom: 12 }}>
+            Second approval needed
+          </div>
+          <p style={{ fontSize: "0.85rem", color: "var(--ink-soft)", marginTop: 0 }}>
+            This request exceeds the normal approval threshold (or is a training expense) and needs
+            a second, admin-level sign-off before it&rsquo;s fully approved. You cannot give this
+            approval if you were the one who gave the first one.
+          </p>
+          <div className="field">
+            <label htmlFor="second-approval-comment">Comment (optional)</label>
+            <textarea
+              id="second-approval-comment"
+              value={comment}
+              onChange={(e) => setComment(e.target.value)}
+              placeholder="Any notes for the requester…"
+            />
+          </div>
+          <button className="btn btn-approve" onClick={handleApprove} disabled={busy}>
+            Give second approval
+          </button>
+        </div>
+      )}
+
       {canMarkPaid && (
         <div className="card">
           <div className="eyebrow" style={{ marginBottom: 12 }}>
@@ -501,13 +628,14 @@ function RequestDetail() {
       {canRevokeApproval && (
         <div className="card">
           <div className="eyebrow" style={{ marginBottom: 12 }}>
-            Approved by mistake?
+            {request.status === "pending_second_approval" ? "Reject instead?" : "Approved by mistake?"}
           </div>
           {!showRejectForm ? (
             <>
               <p style={{ fontSize: "0.85rem", color: "var(--ink-soft)", marginTop: 0 }}>
-                If this request was approved in error, you can reverse the approval with a reason —
-                this is only possible before it&rsquo;s marked Paid.
+                {request.status === "pending_second_approval"
+                  ? "If this shouldn't move forward, you can reject it here instead of waiting for a second approval."
+                  : "If this request was approved in error, you can reverse the approval with a reason — this is only possible before it's marked Paid."}
               </p>
               <button className="btn btn-reject" onClick={() => setShowRejectForm(true)} disabled={busy}>
                 Reject / reverse approval

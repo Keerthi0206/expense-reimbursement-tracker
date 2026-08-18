@@ -10,6 +10,7 @@ const STATUS_LABELS = {
   submitted: "Submitted",
   under_review: "Under Review",
   changes_requested: "Changes Requested",
+  pending_second_approval: "Pending 2nd Approval",
   approved: "Approved",
   rejected: "Rejected",
   paid: "Paid",
@@ -153,6 +154,7 @@ function ReviewerHome() {
             <option value="submitted">Submitted only</option>
             <option value="under_review">Under Review only</option>
             <option value="changes_requested">Changes Requested (awaiting requester)</option>
+            <option value="pending_second_approval">Pending 2nd Approval</option>
             <option value="approved">Approved</option>
             <option value="rejected">Rejected</option>
             <option value="paid">Paid</option>
