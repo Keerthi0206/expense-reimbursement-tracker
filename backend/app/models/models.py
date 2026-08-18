@@ -25,6 +25,7 @@ class StatusEnum(str, enum.Enum):
     submitted = "submitted"
     under_review = "under_review"
     changes_requested = "changes_requested"
+    pending_second_approval = "pending_second_approval"
     approved = "approved"
     rejected = "rejected"
     paid = "paid"
@@ -86,6 +87,8 @@ class ReimbursementRequest(Base):
     submitted_at = Column(DateTime, nullable=True)
     reviewed_at = Column(DateTime, nullable=True)
     paid_at = Column(DateTime, nullable=True)
+    last_reminder_sent_at = Column(DateTime, nullable=True)
+    first_approver_id = Column(String, ForeignKey("users.id"), nullable=True)
 
     requester = relationship(
         "User", back_populates="requests", foreign_keys=[requester_id]

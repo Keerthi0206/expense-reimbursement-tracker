@@ -1,9 +1,10 @@
 from datetime import date, datetime
 from typing import Optional, List
 
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator, computed_field
 
 from app.models.models import RoleEnum, StatusEnum, CategoryEnum
+from app.core.budget import get_budget_limit
 
 
 # ---------- Auth ----------
@@ -125,6 +126,40 @@ class RequesterOut(BaseModel):
         from_attributes = True
 
 
+class DuplicateCandidateOut(BaseModel):
+    id: str
+    title: str
+    status: StatusEnum
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ReceiptSuggestionOut(BaseModel):
+    suggested_amount: Optional[float]
+    suggested_date: Optional[str]
+    suggested_merchant: Optional[str]
+    raw_text_preview: str
+
+
+class ReceiptMetadataOut(BaseModel):
+    size_kb: float
+    format: str
+    width: Optional[int]
+    height: Optional[int]
+    page_count: Optional[int]
+
+
+class ReceiptAnalysisOut(BaseModel):
+    metadata: ReceiptMetadataOut
+    suggestion: ReceiptSuggestionOut
+    amount_mismatch: bool
+    date_mismatch: bool
+    submitted_amount: float
+    submitted_date: date
+
+
 class HistoryEntryOut(BaseModel):
     id: str
     user_id: str
@@ -156,6 +191,16 @@ class RequestOut(BaseModel):
     submitted_at: Optional[datetime]
     reviewed_at: Optional[datetime]
     paid_at: Optional[datetime]
+
+    @computed_field
+    @property
+    def budget_limit(self) -> float:
+        return get_budget_limit(self.category.value)
+
+    @computed_field
+    @property
+    def exceeds_budget(self) -> bool:
+        return self.amount > self.budget_limit
 
     class Config:
         from_attributes = True

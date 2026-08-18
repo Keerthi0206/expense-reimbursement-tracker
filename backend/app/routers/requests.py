@@ -1,4 +1,5 @@
 import math
+import os
 from datetime import date, datetime
 from typing import Optional
 
@@ -9,7 +10,10 @@ from sqlalchemy import update
 
 from app.core.database import get_db
 from app.core.security import get_current_user, require_role
-from app.core.files import save_receipt
+from app.core.files import save_receipt, _detect_type, MAX_FILE_SIZE
+from app.core.email import send_email
+from app.core.workflow_rules import requires_second_approval
+from app.core.receipt_extraction import extract_receipt_suggestions, get_file_metadata
 from app.models.models import (
     ReimbursementRequest, RequestHistory, Notification, User,
     StatusEnum, RoleEnum, CategoryEnum,
@@ -17,7 +21,8 @@ from app.models.models import (
 from app.schemas.schemas import (
     RequestCreate, RequestUpdate, RequestOut, RequestDetailOut, RequesterOut,
     PaginatedRequests, RejectDecision, ReviewDecision, InfoRequest, CancelRequest,
-    DashboardSummary, PaginatedHistory,
+    DashboardSummary, PaginatedHistory, DuplicateCandidateOut,
+    ReceiptSuggestionOut, ReceiptAnalysisOut,
 )
 
 router = APIRouter(prefix="/api/requests", tags=["requests"])
@@ -35,6 +40,11 @@ def _log_history(db: Session, request_id: str, user_id: str, action: str,
 
 def _notify(db: Session, user_id: str, request_id: str, message: str):
     db.add(Notification(user_id=user_id, request_id=request_id, message=message))
+    # Best-effort email alongside the in-app notification -- never lets a mail
+    # failure affect the request action that triggered it (see core/email.py).
+    recipient = db.query(User).filter(User.id == user_id).first()
+    if recipient:
+        send_email(recipient.email, "CDF Expense Tracker update", message)
 
 
 def _get_owned_or_403(db: Session, request_id: str, current_user: User) -> ReimbursementRequest:
@@ -102,11 +112,11 @@ def update_draft(
         raise HTTPException(status_code=404, detail="Reimbursement request not found")
     if req.requester_id != current_user.id:
         raise HTTPException(status_code=403, detail="You can only edit your own requests")
-    # a request the reviewer sent back for more info is editable too, not just drafts
-    if req.status not in (StatusEnum.draft, StatusEnum.changes_requested):
+    # a request the reviewer sent back for more info, or that was rejected, is editable too
+    if req.status not in (StatusEnum.draft, StatusEnum.changes_requested, StatusEnum.rejected):
         raise HTTPException(
             status_code=400,
-            detail="Only draft requests or requests with changes requested can be edited",
+            detail="Only draft, changes-requested, or rejected requests can be edited",
         )
 
     if payload.amount is not None and payload.amount <= 0:
@@ -134,7 +144,10 @@ async def upload_receipt(
         raise HTTPException(status_code=404, detail="Reimbursement request not found")
     if req.requester_id != current_user.id:
         raise HTTPException(status_code=403, detail="You can only attach receipts to your own requests")
-    if req.status not in (StatusEnum.draft, StatusEnum.submitted, StatusEnum.under_review, StatusEnum.changes_requested):
+    if req.status not in (
+        StatusEnum.draft, StatusEnum.submitted, StatusEnum.under_review,
+        StatusEnum.changes_requested, StatusEnum.rejected,
+    ):
         raise HTTPException(status_code=400, detail="Cannot change the receipt on a finalized request")
 
     stored_filename, stored_path = await save_receipt(file, request_id)
@@ -173,14 +186,15 @@ def submit_request(
 
     # for history/notification wording only, not the safety check -- that's the atomic update below
     previous = req.status.value
-    was_resubmission = previous == StatusEnum.changes_requested.value
+    was_resubmission = previous in (StatusEnum.changes_requested.value, StatusEnum.rejected.value)
 
     values = {"status": StatusEnum.submitted, "submitted_at": datetime.utcnow()}
     if was_resubmission:
         values["info_requested_message"] = None
+        values["rejection_reason"] = None
 
     won = _atomic_transition(
-        db, request_id, (StatusEnum.draft, StatusEnum.changes_requested), values,
+        db, request_id, (StatusEnum.draft, StatusEnum.changes_requested, StatusEnum.rejected), values,
     )
     if not won:
         db.rollback()
@@ -188,7 +202,7 @@ def submit_request(
         raise HTTPException(
             status_code=400,
             detail=(
-                "Only draft or changes-requested requests can be submitted "
+                "Only draft, rejected, or changes-requested requests can be submitted "
                 f"(current status: {current.status.value if current else 'unknown'})"
             ),
         )
@@ -392,26 +406,84 @@ def approve_request(
         raise HTTPException(status_code=403, detail="You cannot approve your own request")
 
     previous = req.status.value
-    won = _atomic_transition(
-        db, request_id, (StatusEnum.submitted, StatusEnum.under_review),
-        {
-            "status": StatusEnum.approved, "reviewer_id": current_user.id,
-            "reviewer_comment": payload.comment, "reviewed_at": datetime.utcnow(),
-        },
-    )
-    if not won:
-        db.rollback()
-        current = db.query(ReimbursementRequest).filter(ReimbursementRequest.id == request_id).first()
-        raise HTTPException(
-            status_code=400,
-            detail=f"Only submitted requests can be approved (current status: {current.status.value if current else 'unknown'})",
-        )
 
-    _log_history(db, request_id, current_user.id, "approved", previous, StatusEnum.approved.value, payload.comment)
-    _notify(db, req.requester_id, request_id, f"Your request '{req.title}' was approved.")
-    db.commit()
-    db.refresh(req)
-    return req
+    if req.status in (StatusEnum.submitted, StatusEnum.under_review):
+        # First-tier approval. Some requests need a second, admin-level
+        # sign-off before they're actually approved -- see core/workflow_rules.py.
+        if requires_second_approval(req.category.value, req.amount):
+            won = _atomic_transition(
+                db, request_id, (StatusEnum.submitted, StatusEnum.under_review),
+                {
+                    "status": StatusEnum.pending_second_approval, "reviewer_id": current_user.id,
+                    "first_approver_id": current_user.id, "reviewer_comment": payload.comment,
+                    "reviewed_at": datetime.utcnow(),
+                },
+            )
+            if not won:
+                db.rollback()
+                current = db.query(ReimbursementRequest).filter(ReimbursementRequest.id == request_id).first()
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Only submitted requests can be approved (current status: {current.status.value if current else 'unknown'})",
+                )
+            _log_history(db, request_id, current_user.id, "first_approval_given",
+                         previous, StatusEnum.pending_second_approval.value, payload.comment)
+            admins = db.query(User).filter(User.role == RoleEnum.admin, User.is_active == True).all()
+            for admin_user in admins:
+                if admin_user.id != current_user.id:
+                    _notify(db, admin_user.id, request_id,
+                            f"'{req.title}' needs a second approval (exceeds the normal threshold or is a training expense).")
+            db.commit()
+            db.refresh(req)
+            return req
+
+        won = _atomic_transition(
+            db, request_id, (StatusEnum.submitted, StatusEnum.under_review),
+            {
+                "status": StatusEnum.approved, "reviewer_id": current_user.id,
+                "reviewer_comment": payload.comment, "reviewed_at": datetime.utcnow(),
+            },
+        )
+        if not won:
+            db.rollback()
+            current = db.query(ReimbursementRequest).filter(ReimbursementRequest.id == request_id).first()
+            raise HTTPException(
+                status_code=400,
+                detail=f"Only submitted requests can be approved (current status: {current.status.value if current else 'unknown'})",
+            )
+        _log_history(db, request_id, current_user.id, "approved", previous, StatusEnum.approved.value, payload.comment)
+        _notify(db, req.requester_id, request_id, f"Your request '{req.title}' was approved.")
+        db.commit()
+        db.refresh(req)
+        return req
+
+    if req.status == StatusEnum.pending_second_approval:
+        if current_user.role != RoleEnum.admin:
+            raise HTTPException(status_code=403, detail="The second approval must come from an admin")
+        if req.first_approver_id == current_user.id:
+            raise HTTPException(status_code=403, detail="The second approval must come from a different person than the first")
+
+        won = _atomic_transition(
+            db, request_id, (StatusEnum.pending_second_approval,),
+            {
+                "status": StatusEnum.approved, "reviewer_id": current_user.id,
+                "reviewer_comment": payload.comment, "reviewed_at": datetime.utcnow(),
+            },
+        )
+        if not won:
+            db.rollback()
+            raise HTTPException(status_code=400, detail="This request is no longer awaiting second approval")
+        _log_history(db, request_id, current_user.id, "second_approval_given",
+                     previous, StatusEnum.approved.value, payload.comment)
+        _notify(db, req.requester_id, request_id, f"Your request '{req.title}' was approved.")
+        db.commit()
+        db.refresh(req)
+        return req
+
+    raise HTTPException(
+        status_code=400,
+        detail=f"Only submitted requests can be approved (current status: {req.status.value})",
+    )
 
 
 @router.post("/{request_id}/reject", response_model=RequestOut)
@@ -432,7 +504,10 @@ def reject_request(
     was_approved = previous == StatusEnum.approved.value
     won = _atomic_transition(
         db, request_id,
-        (StatusEnum.submitted, StatusEnum.under_review, StatusEnum.changes_requested, StatusEnum.approved),
+        (
+            StatusEnum.submitted, StatusEnum.under_review, StatusEnum.changes_requested,
+            StatusEnum.pending_second_approval, StatusEnum.approved,
+        ),
         {
             "status": StatusEnum.rejected, "reviewer_id": current_user.id,
             "rejection_reason": payload.reason, "reviewer_comment": None,
@@ -552,6 +627,100 @@ def list_requesters(
         .filter(User.role == RoleEnum.requester)
         .order_by(User.name)
         .all()
+    )
+
+
+@router.get("/meta/check-duplicate", response_model=list[DuplicateCandidateOut])
+def check_duplicate(
+    amount: float,
+    expense_date: date,
+    exclude_id: Optional[str] = None,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Surfaces the requester's own existing requests with the same amount and
+    expense date, so the frontend can warn before creating a likely-duplicate
+    request. This is a warning, not a block -- two genuinely different expenses
+    can share an amount and date, so the requester decides whether to proceed.
+    Cancelled/rejected requests are excluded since they're dead ends, not live
+    duplicates."""
+    query = db.query(ReimbursementRequest).filter(
+        ReimbursementRequest.requester_id == current_user.id,
+        ReimbursementRequest.amount == amount,
+        ReimbursementRequest.expense_date == expense_date,
+        ReimbursementRequest.status.notin_([StatusEnum.cancelled, StatusEnum.rejected]),
+    )
+    if exclude_id:
+        query = query.filter(ReimbursementRequest.id != exclude_id)
+    return query.order_by(ReimbursementRequest.created_at.desc()).all()
+
+
+@router.post("/meta/extract-receipt", response_model=ReceiptSuggestionOut)
+async def extract_receipt_preview(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Runs OCR/parsing on a receipt BEFORE a request exists, so the New
+    Request form can suggest amount/date/merchant while the requester is
+    still filling it out. Nothing here is persisted -- the file still has
+    to go through the normal upload-receipt endpoint once the request is
+    actually created. These are suggestions only; the frontend must let the
+    requester review and apply them, never auto-fill silently."""
+    contents = await file.read()
+    if len(contents) > MAX_FILE_SIZE:
+        raise HTTPException(status_code=400, detail="Receipt file exceeds the 5 MB size limit")
+    mime, _ = _detect_type(contents[:16])
+    if mime is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Unsupported file type. Only JPEG, PNG, and PDF receipts are accepted.",
+        )
+    suggestion = extract_receipt_suggestions(contents, mime)
+    return suggestion
+
+
+@router.get("/{request_id}/receipt-analysis", response_model=ReceiptAnalysisOut)
+def get_receipt_analysis(
+    request_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Re-runs OCR against a request's ALREADY-STORED receipt and compares
+    it to what was actually submitted -- the receipt/request consistency
+    check. On-demand only (not run automatically on every list/detail
+    fetch), since OCR is real work, not free like the budget-limit computed
+    fields. Available to the owner or any reviewer/admin, same as viewing
+    the request itself."""
+    req = _get_owned_or_403(db, request_id, current_user)
+    if not req.receipt_path or not os.path.exists(req.receipt_path):
+        raise HTTPException(status_code=400, detail="This request has no receipt attached yet")
+
+    with open(req.receipt_path, "rb") as f:
+        contents = f.read()
+    mime, _ = _detect_type(contents[:16])
+    if mime is None:
+        raise HTTPException(status_code=500, detail="Stored receipt file is not a recognized type")
+
+    metadata = get_file_metadata(contents, mime)
+    suggestion = extract_receipt_suggestions(contents, mime)
+
+    amount_mismatch = (
+        suggestion["suggested_amount"] is not None
+        and abs(suggestion["suggested_amount"] - req.amount) > 0.01
+    )
+    date_mismatch = (
+        suggestion["suggested_date"] is not None
+        and suggestion["suggested_date"] != req.expense_date.isoformat()
+    )
+
+    return ReceiptAnalysisOut(
+        metadata=metadata,
+        suggestion=suggestion,
+        amount_mismatch=amount_mismatch,
+        date_mismatch=date_mismatch,
+        submitted_amount=req.amount,
+        submitted_date=req.expense_date,
     )
 
 
