@@ -33,6 +33,10 @@ def setup_db():
              hashed_password=hash_password("pass1234"), role=RoleEnum.requester),
         User(name="Test Reviewer", email="rev@test.com",
              hashed_password=hash_password("pass1234"), role=RoleEnum.reviewer),
+        User(name="Test Admin", email="admin@test.com",
+             hashed_password=hash_password("pass1234"), role=RoleEnum.admin),
+        User(name="Test Admin Two", email="admin2@test.com",
+             hashed_password=hash_password("pass1234"), role=RoleEnum.admin),
     ])
     db.commit()
     db.close()
@@ -47,6 +51,24 @@ def login(email, password="pass1234"):
 
 def auth_headers(token):
     return {"Authorization": f"Bearer {token}"}
+
+
+def _make_fake_receipt_image(merchant, date_str, total):
+    """Builds a real, OCR-readable receipt image with a proper TrueType font
+    (not Pillow's crude default bitmap font, which garbles text badly and
+    was confirmed unreliable during development). Returns JPEG bytes."""
+    from PIL import Image, ImageDraw, ImageFont
+    img = Image.new("RGB", (500, 300), color="white")
+    draw = ImageDraw.Draw(img)
+    font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf", 20)
+    lines = [merchant, f"Date: {date_str}", "", f"TOTAL:    ${total:.2f}"]
+    y = 20
+    for line in lines:
+        draw.text((20, y), line, fill="black", font=font)
+        y += 30
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG")
+    return buf.getvalue()
 
 
 def test_login_wrong_password_returns_401():
@@ -64,6 +86,34 @@ def test_create_request_requires_auth():
         "title": "x", "amount": 5, "expense_date": "2026-01-01", "category": "other",
     })
     assert resp.status_code == 401
+
+
+def test_budget_limit_warning_flag_is_computed():
+    token = login("req@test.com")
+
+    over_resp = client.post("/api/requests", headers=auth_headers(token), json={
+        "title": "Over budget meal", "amount": 300, "expense_date": "2026-01-05", "category": "meals",
+    })
+    assert over_resp.status_code == 201
+    over_data = over_resp.json()
+    assert over_data["budget_limit"] == 150.0
+    assert over_data["exceeds_budget"] is True
+
+    under_resp = client.post("/api/requests", headers=auth_headers(token), json={
+        "title": "Normal meal", "amount": 25, "expense_date": "2026-01-05", "category": "meals",
+    })
+    under_data = under_resp.json()
+    assert under_data["exceeds_budget"] is False
+
+    # the flag isn't a hard block -- creation still succeeds either way
+    assert over_resp.status_code == under_resp.status_code == 201
+
+    # different categories have different limits
+    travel_resp = client.post("/api/requests", headers=auth_headers(token), json={
+        "title": "Flight", "amount": 300, "expense_date": "2026-01-05", "category": "travel",
+    })
+    assert travel_resp.json()["budget_limit"] == 800.0
+    assert travel_resp.json()["exceeds_budget"] is False
 
 
 def test_negative_amount_rejected():
@@ -118,6 +168,116 @@ def test_nested_history_is_chronologically_ordered():
 
     actions_in_order = [h["action"] for h in detail_resp.json()["history"]]
     assert actions_in_order == ["created", "submitted", "opened_for_review", "approved", "marked_paid"]
+
+
+def test_high_value_request_needs_second_admin_approval():
+    req_token = login("req@test.com")
+    rev_token = login("rev@test.com")
+
+    create_resp = client.post("/api/requests", headers=auth_headers(req_token), json={
+        "title": "Big conference sponsorship", "amount": 900, "expense_date": "2026-01-05",
+        "category": "event_expenses",
+    })
+    request_id = create_resp.json()["id"]
+    fake_jpeg = b"\xff\xd8\xff" + b"0" * 20
+    client.post(f"/api/requests/{request_id}/receipt", headers=auth_headers(req_token),
+                files={"file": ("r.jpg", io.BytesIO(fake_jpeg), "image/jpeg")})
+    client.post(f"/api/requests/{request_id}/submit", headers=auth_headers(req_token))
+
+    # first approval by a reviewer doesn't fully approve it -- goes to the second tier
+    first_resp = client.post(f"/api/requests/{request_id}/approve", headers=auth_headers(rev_token), json={})
+    assert first_resp.status_code == 200
+    assert first_resp.json()["status"] == "pending_second_approval"
+
+    # a plain reviewer (not an admin) can't give the second-tier approval, even a different one
+    other_rev_resp = client.post(
+        f"/api/requests/{request_id}/approve", headers=auth_headers(rev_token), json={}
+    )
+    assert other_rev_resp.status_code == 403
+
+    # an admin can
+    admin_token = login("admin@test.com")
+    second_resp = client.post(f"/api/requests/{request_id}/approve", headers=auth_headers(admin_token), json={})
+    assert second_resp.status_code == 200
+    assert second_resp.json()["status"] == "approved"
+
+
+def test_same_person_cannot_give_both_approvals():
+    req_token = login("req@test.com")
+    admin_token = login("admin@test.com")
+    other_admin_token = login("admin2@test.com")
+
+    create_resp = client.post("/api/requests", headers=auth_headers(req_token), json={
+        "title": "Training course", "amount": 50, "expense_date": "2026-01-05", "category": "training",
+    })
+    request_id = create_resp.json()["id"]
+    fake_jpeg = b"\xff\xd8\xff" + b"0" * 20
+    client.post(f"/api/requests/{request_id}/receipt", headers=auth_headers(req_token),
+                files={"file": ("r.jpg", io.BytesIO(fake_jpeg), "image/jpeg")})
+    client.post(f"/api/requests/{request_id}/submit", headers=auth_headers(req_token))
+
+    # training category triggers the second tier regardless of amount ($50, well under threshold)
+    first_resp = client.post(f"/api/requests/{request_id}/approve", headers=auth_headers(admin_token), json={})
+    assert first_resp.status_code == 200
+    assert first_resp.json()["status"] == "pending_second_approval"
+
+    # same admin can't also give the second approval
+    same_admin_resp = client.post(f"/api/requests/{request_id}/approve", headers=auth_headers(admin_token), json={})
+    assert same_admin_resp.status_code == 403
+
+    # a different admin can
+    second_resp = client.post(f"/api/requests/{request_id}/approve", headers=auth_headers(other_admin_token), json={})
+    assert second_resp.status_code == 200
+    assert second_resp.json()["status"] == "approved"
+
+    history_resp = client.get(f"/api/requests/{request_id}/history", headers=auth_headers(req_token))
+    actions = [h["action"] for h in history_resp.json()["items"]]
+    assert "first_approval_given" in actions
+    assert "second_approval_given" in actions
+
+    # normal mark-paid flow works fine once fully approved
+    paid_resp = client.post(f"/api/requests/{request_id}/mark-paid", headers=auth_headers(other_admin_token))
+    assert paid_resp.status_code == 200
+
+
+def test_low_value_request_skips_second_tier_entirely():
+    req_token = login("req@test.com")
+    rev_token = login("rev@test.com")
+
+    create_resp = client.post("/api/requests", headers=auth_headers(req_token), json={
+        "title": "Cheap office pens", "amount": 15, "expense_date": "2026-01-05", "category": "office_supplies",
+    })
+    request_id = create_resp.json()["id"]
+    fake_jpeg = b"\xff\xd8\xff" + b"0" * 20
+    client.post(f"/api/requests/{request_id}/receipt", headers=auth_headers(req_token),
+                files={"file": ("r.jpg", io.BytesIO(fake_jpeg), "image/jpeg")})
+    client.post(f"/api/requests/{request_id}/submit", headers=auth_headers(req_token))
+
+    resp = client.post(f"/api/requests/{request_id}/approve", headers=auth_headers(rev_token), json={})
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "approved"  # straight to approved, no second tier
+
+
+def test_can_reject_a_request_awaiting_second_approval():
+    req_token = login("req@test.com")
+    admin_token = login("admin@test.com")
+
+    create_resp = client.post("/api/requests", headers=auth_headers(req_token), json={
+        "title": "Big travel request", "amount": 900, "expense_date": "2026-01-05", "category": "travel",
+    })
+    request_id = create_resp.json()["id"]
+    fake_jpeg = b"\xff\xd8\xff" + b"0" * 20
+    client.post(f"/api/requests/{request_id}/receipt", headers=auth_headers(req_token),
+                files={"file": ("r.jpg", io.BytesIO(fake_jpeg), "image/jpeg")})
+    client.post(f"/api/requests/{request_id}/submit", headers=auth_headers(req_token))
+    client.post(f"/api/requests/{request_id}/approve", headers=auth_headers(admin_token), json={})
+
+    reject_resp = client.post(
+        f"/api/requests/{request_id}/reject", headers=auth_headers(admin_token),
+        json={"reason": "Actually not approved, correcting a mistake"},
+    )
+    assert reject_resp.status_code == 200
+    assert reject_resp.json()["status"] == "rejected"
 
 
 def test_full_workflow_create_to_paid():
@@ -320,6 +480,43 @@ def test_double_submit_race_is_prevented():
     detail_resp = client.get(f"/api/requests/{request_id}", headers=auth_headers(req_token))
     submit_history = [h for h in detail_resp.json()["history"] if h["action"] in ("submitted", "resubmitted")]
     assert len(submit_history) == 1
+
+
+def test_can_edit_and_resubmit_after_rejection():
+    req_token = login("req@test.com")
+    rev_token = login("rev@test.com")
+
+    create_resp = client.post("/api/requests", headers=auth_headers(req_token), json={
+        "title": "Needs a fix", "amount": 40, "expense_date": "2026-01-05", "category": "other",
+    })
+    request_id = create_resp.json()["id"]
+    fake_jpeg = b"\xff\xd8\xff" + b"0" * 20
+    client.post(f"/api/requests/{request_id}/receipt", headers=auth_headers(req_token),
+                files={"file": ("r.jpg", io.BytesIO(fake_jpeg), "image/jpeg")})
+    client.post(f"/api/requests/{request_id}/submit", headers=auth_headers(req_token))
+    client.post(f"/api/requests/{request_id}/reject", headers=auth_headers(rev_token),
+                json={"reason": "Wrong category"})
+
+    # Cannot submit a rejected request without editing it first? Actually can submit directly too.
+    edit_resp = client.patch(
+        f"/api/requests/{request_id}", headers=auth_headers(req_token),
+        json={"category": "training", "title": "Needs a fix (corrected)"},
+    )
+    assert edit_resp.status_code == 200
+
+    resubmit_resp = client.post(f"/api/requests/{request_id}/submit", headers=auth_headers(req_token))
+    assert resubmit_resp.status_code == 200
+    assert resubmit_resp.json()["status"] == "submitted"
+    assert resubmit_resp.json()["rejection_reason"] is None
+
+    history_resp = client.get(f"/api/requests/{request_id}/history", headers=auth_headers(req_token))
+    actions = [h["action"] for h in history_resp.json()["items"]]
+    assert "rejected" in actions
+    assert "resubmitted" in actions
+
+    # normal approval flow works fine afterward
+    approve_resp = client.post(f"/api/requests/{request_id}/approve", headers=auth_headers(rev_token), json={})
+    assert approve_resp.status_code == 200
 
 
 def test_reject_requires_reason():
@@ -638,6 +835,60 @@ def test_search_and_filter():
     assert data["page"] == 1
 
 
+def test_duplicate_check_finds_matching_amount_and_date():
+    req_token = login("req@test.com")
+    other_token = login("req2@test.com")
+
+    first_resp = client.post("/api/requests", headers=auth_headers(req_token), json={
+        "title": "Client dinner", "amount": 88.50, "expense_date": "2026-02-01", "category": "meals",
+    })
+    first_id = first_resp.json()["id"]
+
+    # no duplicate yet
+    empty_check = client.get(
+        "/api/requests/meta/check-duplicate?amount=88.50&expense_date=2026-02-01",
+        headers=auth_headers(req_token),
+    )
+    assert empty_check.status_code == 200
+    assert len(empty_check.json()) == 1  # finds itself, since nothing's excluded
+
+    # excluding itself, no duplicates
+    self_excluded_check = client.get(
+        f"/api/requests/meta/check-duplicate?amount=88.50&expense_date=2026-02-01&exclude_id={first_id}",
+        headers=auth_headers(req_token),
+    )
+    assert self_excluded_check.json() == []
+
+    # a second, genuinely different request with the same amount/date
+    second_resp = client.post("/api/requests", headers=auth_headers(req_token), json={
+        "title": "Client dinner (again)", "amount": 88.50, "expense_date": "2026-02-01", "category": "meals",
+    })
+    second_id = second_resp.json()["id"]
+
+    match_check = client.get(
+        f"/api/requests/meta/check-duplicate?amount=88.50&expense_date=2026-02-01&exclude_id={second_id}",
+        headers=auth_headers(req_token),
+    )
+    matches = match_check.json()
+    assert len(matches) == 1
+    assert matches[0]["id"] == first_id
+
+    # doesn't leak across users
+    other_check = client.get(
+        "/api/requests/meta/check-duplicate?amount=88.50&expense_date=2026-02-01",
+        headers=auth_headers(other_token),
+    )
+    assert other_check.json() == []
+
+    # cancelled requests don't count as live duplicates
+    client.post(f"/api/requests/{first_id}/cancel", headers=auth_headers(req_token), json={})
+    after_cancel_check = client.get(
+        f"/api/requests/meta/check-duplicate?amount=88.50&expense_date=2026-02-01&exclude_id={second_id}",
+        headers=auth_headers(req_token),
+    )
+    assert after_cancel_check.json() == []
+
+
 def test_sorting_requests_by_amount():
     token = login("req@test.com")
 
@@ -696,4 +947,95 @@ def test_deactivated_account_cannot_log_in():
     # Admin-only endpoint check: a non-admin cannot deactivate anyone
     token = login("req@test.com")
     resp = client.get("/api/admin/users", headers=auth_headers(token))
+    assert resp.status_code == 403
+
+
+def test_extract_receipt_preview_before_request_exists():
+    token = login("req@test.com")
+    receipt_bytes = _make_fake_receipt_image("STAPLES OFFICE SUPPLY", "08/12/2026", 26.19)
+
+    resp = client.post(
+        "/api/requests/meta/extract-receipt", headers=auth_headers(token),
+        files={"file": ("receipt.jpg", io.BytesIO(receipt_bytes), "image/jpeg")},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["suggested_amount"] == 26.19
+    assert data["suggested_date"] == "2026-08-12"
+    assert "STAPLES" in data["suggested_merchant"]
+    assert len(data["raw_text_preview"]) > 0
+
+
+def test_extract_receipt_preview_rejects_bad_file_type():
+    token = login("req@test.com")
+    resp = client.post(
+        "/api/requests/meta/extract-receipt", headers=auth_headers(token),
+        files={"file": ("not_a_receipt.txt", io.BytesIO(b"just some text"), "text/plain")},
+    )
+    assert resp.status_code == 400
+
+
+def test_receipt_analysis_requires_a_receipt_first():
+    token = login("req@test.com")
+    create_resp = client.post("/api/requests", headers=auth_headers(token), json={
+        "title": "No receipt yet", "amount": 20, "expense_date": "2026-01-05", "category": "other",
+    })
+    request_id = create_resp.json()["id"]
+
+    resp = client.get(f"/api/requests/{request_id}/receipt-analysis", headers=auth_headers(token))
+    assert resp.status_code == 400
+
+
+def test_receipt_analysis_flags_a_genuine_mismatch():
+    token = login("req@test.com")
+    create_resp = client.post("/api/requests", headers=auth_headers(token), json={
+        "title": "Typo'd amount", "amount": 999.99, "expense_date": "2026-08-12", "category": "office_supplies",
+    })
+    request_id = create_resp.json()["id"]
+
+    # the actual receipt says $26.19, but the requester typed $999.99
+    receipt_bytes = _make_fake_receipt_image("STAPLES OFFICE SUPPLY", "08/12/2026", 26.19)
+    client.post(f"/api/requests/{request_id}/receipt", headers=auth_headers(token),
+                files={"file": ("receipt.jpg", io.BytesIO(receipt_bytes), "image/jpeg")})
+
+    resp = client.get(f"/api/requests/{request_id}/receipt-analysis", headers=auth_headers(token))
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["amount_mismatch"] is True
+    assert data["date_mismatch"] is False  # date does match
+    assert data["suggestion"]["suggested_amount"] == 26.19
+    assert data["submitted_amount"] == 999.99
+    assert data["metadata"]["format"] == "image/jpeg"
+    assert data["metadata"]["width"] == 500
+
+
+def test_receipt_analysis_no_mismatch_when_values_actually_match():
+    token = login("req@test.com")
+    create_resp = client.post("/api/requests", headers=auth_headers(token), json={
+        "title": "Correct amount", "amount": 26.19, "expense_date": "2026-08-12", "category": "office_supplies",
+    })
+    request_id = create_resp.json()["id"]
+
+    receipt_bytes = _make_fake_receipt_image("STAPLES OFFICE SUPPLY", "08/12/2026", 26.19)
+    client.post(f"/api/requests/{request_id}/receipt", headers=auth_headers(token),
+                files={"file": ("receipt.jpg", io.BytesIO(receipt_bytes), "image/jpeg")})
+
+    resp = client.get(f"/api/requests/{request_id}/receipt-analysis", headers=auth_headers(token))
+    data = resp.json()
+    assert data["amount_mismatch"] is False
+    assert data["date_mismatch"] is False
+
+
+def test_receipt_analysis_respects_normal_access_control():
+    token = login("req@test.com")
+    other_token = login("req2@test.com")
+    create_resp = client.post("/api/requests", headers=auth_headers(token), json={
+        "title": "Private request", "amount": 20, "expense_date": "2026-01-05", "category": "other",
+    })
+    request_id = create_resp.json()["id"]
+    receipt_bytes = _make_fake_receipt_image("Some Store", "01/05/2026", 20.00)
+    client.post(f"/api/requests/{request_id}/receipt", headers=auth_headers(token),
+                files={"file": ("r.jpg", io.BytesIO(receipt_bytes), "image/jpeg")})
+
+    resp = client.get(f"/api/requests/{request_id}/receipt-analysis", headers=auth_headers(other_token))
     assert resp.status_code == 403

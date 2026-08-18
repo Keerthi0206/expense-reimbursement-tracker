@@ -6,6 +6,8 @@ Run with: pytest -v
 """
 import os
 import sys
+import io
+from datetime import datetime, timedelta
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -15,7 +17,7 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.core.database import SessionLocal
 from app.core.security import hash_password
-from app.models.models import User, RoleEnum
+from app.models.models import User, RoleEnum, ReimbursementRequest
 
 client = TestClient(app)
 
@@ -224,3 +226,50 @@ def test_non_admin_cannot_view_or_modify_user_history():
     admin_token, admin_id = login("admin1@test.com")
     resp = client.get(f"/api/admin/users/{admin_id}/history", headers=auth_headers(token))
     assert resp.status_code == 403
+
+
+def test_reminders_go_out_for_stale_pending_requests():
+    admin_token, _ = login("admin1@test.com")
+    req_token, _ = login("requester@test.com")
+    rev_token, rev_id = login("reviewer@test.com")
+
+    # non-admin can't trigger reminders
+    forbidden_resp = client.post("/api/admin/trigger-reminders", headers=auth_headers(req_token))
+    assert forbidden_resp.status_code == 403
+
+    create_resp = client.post("/api/requests", headers=auth_headers(req_token), json={
+        "title": "Stale request", "amount": 40, "expense_date": "2026-01-05", "category": "other",
+    })
+    request_id = create_resp.json()["id"]
+    fake_jpeg = b"\xff\xd8\xff" + b"0" * 20
+    client.post(f"/api/requests/{request_id}/receipt", headers=auth_headers(req_token),
+                files={"file": ("r.jpg", io.BytesIO(fake_jpeg), "image/jpeg")})
+    client.post(f"/api/requests/{request_id}/submit", headers=auth_headers(req_token))
+    # claim it, so the reminder targets this specific reviewer, not everyone
+    client.get(f"/api/requests/{request_id}", headers=auth_headers(rev_token))
+
+    # can't wait real days for this to go stale -- backdate it directly
+    db = SessionLocal()
+    req = db.query(ReimbursementRequest).filter(ReimbursementRequest.id == request_id).first()
+    req.submitted_at = datetime.utcnow() - timedelta(days=5)
+    db.commit()
+    db.close()
+
+    before_resp = client.get("/api/notifications", headers=auth_headers(rev_token))
+    before_count = before_resp.json()["total"]
+
+    trigger_resp = client.post("/api/admin/trigger-reminders", headers=auth_headers(admin_token))
+    assert trigger_resp.status_code == 200
+    assert trigger_resp.json()["reminders_sent"] == 1
+
+    after_resp = client.get("/api/notifications", headers=auth_headers(rev_token))
+    after_data = after_resp.json()
+    assert after_data["total"] == before_count + 1
+    assert "waiting" in after_data["items"][0]["message"]
+
+    # triggering again immediately shouldn't re-remind (already reminded recently)
+    second_trigger_resp = client.post("/api/admin/trigger-reminders", headers=auth_headers(admin_token))
+    assert second_trigger_resp.json()["reminders_sent"] == 0
+
+    no_new_notif_resp = client.get("/api/notifications", headers=auth_headers(rev_token))
+    assert no_new_notif_resp.json()["total"] == after_data["total"]
