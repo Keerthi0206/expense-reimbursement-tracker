@@ -1,35 +1,37 @@
+import logging
 import os
 import time
 import uuid
-import logging
 from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
+
 # must run before any app.core import -- those read env vars at import time
 load_dotenv()
 
+from apscheduler.schedulers.background import BackgroundScheduler
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from fastapi.exceptions import RequestValidationError
-from apscheduler.schedulers.background import BackgroundScheduler
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
-
 from sqlalchemy import text
 
 from app.core.database import SessionLocal
 from app.core.db_setup import run_migrations
+from app.core.logging_config import configure_logging
+from app.core.notification_cleanup import cleanup_old_notifications
 from app.core.rate_limit import limiter
 from app.core.reminders import send_pending_reminders
-from app.core.notification_cleanup import cleanup_old_notifications
-from app.routers import auth, requests as requests_router, admin, notifications
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("expense_tracker")
+from app.routers import admin, auth, notifications
+from app.routers import requests as requests_router
 
 run_migrations()
+# after migrations -- alembic's fileConfig() resets root log level, would swallow our logs otherwise
+configure_logging()
+logger = logging.getLogger("expense_tracker")
 
 
 def _run_reminder_check():
@@ -37,9 +39,9 @@ def _run_reminder_check():
     try:
         count = send_pending_reminders(db)
         if count:
-            logger.info("Sent reminders for %d pending request(s)", count)
+            logger.info("reminders sent", extra={"reminders_sent": count})
     except Exception:
-        logger.exception("Reminder check failed")
+        logger.exception("reminder check failed")
     finally:
         db.close()
 
@@ -49,9 +51,9 @@ def _run_notification_cleanup():
     try:
         deleted = cleanup_old_notifications(db)
         if deleted:
-            logger.info("Cleaned up %d old, read notification(s)", deleted)
+            logger.info("notifications cleaned up", extra={"notifications_deleted": deleted})
     except Exception:
-        logger.exception("Notification cleanup failed")
+        logger.exception("notification cleanup failed")
     finally:
         db.close()
 
@@ -98,19 +100,28 @@ async def observability_middleware(request: Request, call_next):
     response.headers["X-Request-ID"] = request_id
     response.headers["X-Response-Time-Ms"] = str(duration_ms)
     logger.info(
-        "request_id=%s method=%s path=%s status=%d duration_ms=%s",
-        request_id, request.method, request.url.path, response.status_code, duration_ms,
+        "request handled",
+        extra={
+            "request_id": request_id, "method": request.method,
+            "path": request.url.path, "status": response.status_code, "duration_ms": duration_ms,
+        },
     )
     return response
 
 
-# Never leak internal stack traces / DB errors to the client.
+# Never leak internal stack traces / DB errors to the client. request_id is
+# returned to the client too, not just logged -- lets a bug report ("I got
+# an error, request_id was X") be grepped straight out of structured logs.
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception):
-    logger.exception("Unhandled error on %s %s", request.method, request.url)
+    request_id = getattr(request.state, "request_id", None)
+    logger.exception(
+        "unhandled error",
+        extra={"request_id": request_id, "method": request.method, "path": request.url.path},
+    )
     return JSONResponse(
         status_code=500,
-        content={"detail": "An unexpected error occurred. Please try again."},
+        content={"detail": "An unexpected error occurred. Please try again.", "request_id": request_id},
     )
 
 
