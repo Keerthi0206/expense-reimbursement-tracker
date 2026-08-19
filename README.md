@@ -90,10 +90,11 @@ Backend at `http://localhost:8000`, frontend at `http://localhost:3000`. Uses SQ
 
 1. In Render, create a **PostgreSQL** instance (free tier - 1GB, expires after 30 days, which is fine for a hackathon submission window). Copy its **Internal Database URL**.
 2. Create a **Web Service** pointing at this repo's `backend/` folder, build command `pip install -r requirements.txt`, start command `uvicorn app.main:app --host 0.0.0.0 --port $PORT`.
-3. Set environment variables on the web service: `DATABASE_URL` = the Postgres URL from step 1, `SECRET_KEY` = a long random string (not the dev default), `ALLOWED_ORIGINS` = your Vercel frontend URL.
-4. Once deployed, open Render's shell for the service and run `python seed.py` once to create demo accounts and sample data.
+3. **Important:** Select Docker as the Runtime when creating the Render web service, not native Python, Render's native Python builds can't install system packages like `tesseract-ocr`, which the receipt-OCR feature needs. Point it at `backend/Dockerfile`.
+4. Set environment variables on the web service: `DATABASE_URL` = the Postgres URL from step 1, `SECRET_KEY` = a long random string (not the dev default), `ALLOWED_ORIGINS` = your Vercel frontend URL.
+5. Once deployed, open Render's shell for the service and run `python seed.py` once to create demo accounts and sample data.
 
-This was verified end-to-end against a real local PostgreSQL instance (not just SQLite) before writing this section: all 49 backend tests pass against Postgres, a request created before a full server restart was still present afterward and the atomic status-transition race-condition fix (see `docs/testing.md`) was re-verified safe under Postgres's own locking not just SQLite's.
+This was verified end-to-end against a real local PostgreSQL instance (not just SQLite) before writing this section: all 91 backend tests pass against Postgres, a request created before a full server restart was still present afterward and the atomic status-transition race-condition fix (see `docs/testing.md`) was re-verified safe under Postgres's own locking not just SQLite's.
 
 **Frontend on Vercel:** set `NEXT_PUBLIC_API_URL` to your Render backend's URL, deploy from `src/frontend`.
 
