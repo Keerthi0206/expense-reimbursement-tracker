@@ -1,17 +1,25 @@
+import math
 from typing import Optional
 
-import math
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.security import require_role, hash_password
-from app.core.reminders import send_pending_reminders, REMINDER_THRESHOLD_DAYS
-from app.core.notification_cleanup import cleanup_old_notifications, NOTIFICATION_RETENTION_DAYS
-from app.models.models import User, RoleEnum, UserAccountHistory
+from app.core.notification_cleanup import (
+    NOTIFICATION_RETENTION_DAYS,
+    cleanup_old_notifications,
+)
+from app.core.reminders import REMINDER_THRESHOLD_DAYS, send_pending_reminders
+from app.core.security import hash_password, require_role
+from app.models.models import RoleEnum, User, UserAccountHistory
 from app.schemas.schemas import (
-    UserOut, UserCreate, UserRoleUpdate, UserStatusUpdate, UserDetailOut,
-    PaginatedUsers, PaginatedUserHistory,
+    PaginatedUserHistory,
+    PaginatedUsers,
+    UserCreate,
+    UserDetailOut,
+    UserOut,
+    UserRoleUpdate,
+    UserStatusUpdate,
 )
 
 router = APIRouter(prefix="/admin", tags=["admin"])

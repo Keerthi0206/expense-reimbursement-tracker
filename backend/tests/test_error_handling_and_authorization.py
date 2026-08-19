@@ -10,19 +10,19 @@ These were originally verified manually via curl against a live server
 
 Run with: pytest -v
 """
+import io
 import os
 import sys
-import io
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pytest
 from fastapi.testclient import TestClient
 
-from app.main import app
 from app.core.database import SessionLocal
 from app.core.security import hash_password
-from app.models.models import User, RoleEnum
+from app.main import app
+from app.models.models import RoleEnum, User
 
 client = TestClient(app)
 

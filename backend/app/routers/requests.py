@@ -3,30 +3,52 @@ import os
 from datetime import date, datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Query
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from fastapi.responses import FileResponse
+from sqlalchemy import and_, or_, update
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import update, or_, and_
 
-from app.core.database import get_db
-from app.core.security import get_current_user, require_role
-from app.core.files import save_receipt, _detect_type, MAX_FILE_SIZE
-from app.core.workflow_rules import requires_second_approval
-from app.core.receipt_extraction import extract_receipt_suggestions, get_file_metadata
-from app.core.cursor import encode_cursor, decode_cursor
 from app.core.analytics import (
-    compute_monthly_totals, compute_by_category, compute_by_requester,
-    compute_approval_time, compute_reviewer_workload, compute_average_request_amount,
+    compute_approval_time,
+    compute_average_request_amount,
+    compute_by_category,
+    compute_by_requester,
+    compute_monthly_totals,
+    compute_reviewer_workload,
 )
+from app.core.cursor import decode_cursor, encode_cursor
+from app.core.database import get_db
+from app.core.files import MAX_FILE_SIZE, _detect_type, save_receipt
+from app.core.receipt_extraction import extract_receipt_suggestions, get_file_metadata
+from app.core.security import get_current_user, require_role
+from app.core.workflow_rules import requires_second_approval
 from app.models.models import (
-    ReimbursementRequest, RequestHistory, Notification, User,
-    StatusEnum, RoleEnum, CategoryEnum,
+    CategoryEnum,
+    Notification,
+    ReimbursementRequest,
+    RequestHistory,
+    RoleEnum,
+    StatusEnum,
+    User,
 )
 from app.schemas.schemas import (
-    RequestCreate, RequestUpdate, RequestOut, RequestDetailOut, RequesterOut,
-    PaginatedRequests, RejectDecision, ReviewDecision, InfoRequest, CancelRequest,
-    DashboardSummary, PaginatedHistory, DuplicateCandidateOut,
-    ReceiptSuggestionOut, ReceiptAnalysisOut, AnalyticsOut, CursorPageOut,
+    AnalyticsOut,
+    CancelRequest,
+    CursorPageOut,
+    DashboardSummary,
+    DuplicateCandidateOut,
+    InfoRequest,
+    PaginatedHistory,
+    PaginatedRequests,
+    ReceiptAnalysisOut,
+    ReceiptSuggestionOut,
+    RejectDecision,
+    RequestCreate,
+    RequestDetailOut,
+    RequesterOut,
+    RequestOut,
+    RequestUpdate,
+    ReviewDecision,
 )
 
 router = APIRouter(prefix="/requests", tags=["requests"])
@@ -879,6 +901,7 @@ def export_csv(
 ):
     import csv
     import io
+
     from fastapi.responses import StreamingResponse
 
     requests_list = _scoped_export_query(current_user, db, status_filter, category, date_from, date_to).all()
@@ -915,12 +938,19 @@ def export_pdf(
     db: Session = Depends(get_db),
 ):
     import io
+
     from fastapi.responses import StreamingResponse
-    from reportlab.lib.pagesizes import letter
     from reportlab.lib import colors
-    from reportlab.lib.units import inch
-    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+    from reportlab.lib.pagesizes import letter
     from reportlab.lib.styles import getSampleStyleSheet
+    from reportlab.lib.units import inch
+    from reportlab.platypus import (
+        Paragraph,
+        SimpleDocTemplate,
+        Spacer,
+        Table,
+        TableStyle,
+    )
 
     requests_list = _scoped_export_query(current_user, db, status_filter, category, date_from, date_to).all()
 

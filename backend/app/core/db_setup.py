@@ -9,8 +9,8 @@ import os
 
 
 def run_migrations():
-    from alembic.config import Config
     from alembic import command
+    from alembic.config import Config
 
     backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     alembic_cfg = Config(os.path.join(backend_dir, "alembic.ini"))

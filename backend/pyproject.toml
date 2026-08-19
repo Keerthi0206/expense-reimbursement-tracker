@@ -1,0 +1,12 @@
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+# E501: line length isn't worth enforcing retroactively across this codebase
+# E712: `Column == True` is the correct SQLAlchemy filter idiom, not a real
+# Python boolean comparison -- this rule is a known false positive for ORM code
+ignore = ["E501", "E712"]
+
+[tool.ruff.lint.per-file-ignores]
+"migrations/*" = ["E", "F", "I"]
+# load_dotenv() has to run before other imports here -- verified live
+# earlier that reordering silently breaks .env loading
+"app/main.py" = ["E402"]

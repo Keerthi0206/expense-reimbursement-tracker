@@ -4,9 +4,9 @@ role-based access control, and the full status lifecycle.
 
 Run with: pytest -v
 """
+import io
 import os
 import sys
-import io
 import threading
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -14,10 +14,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import pytest
 from fastapi.testclient import TestClient
 
-from app.main import app
 from app.core.database import SessionLocal
 from app.core.security import hash_password
-from app.models.models import User, RoleEnum
+from app.main import app
+from app.models.models import RoleEnum, User
 
 client = TestClient(app)
 
@@ -846,6 +846,35 @@ def test_dashboard_totals_are_accurate():
     assert sum(data["count_by_status"].values()) >= 1
 
 
+def test_data_survives_a_completely_new_database_connection():
+    """Proves persistence for real -- reads back through a brand new
+    engine/session on the same file, not just SQLAlchemy's session cache."""
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    from app.models.models import ReimbursementRequest
+
+    token = login("req@test.com")
+    create_resp = client.post("/api/requests", headers=auth_headers(token), json={
+        "title": "Persistence check", "amount": 42.42, "expense_date": "2026-01-05", "category": "other",
+    })
+    request_id = create_resp.json()["id"]
+
+    # a completely independent connection to the same file, bypassing the
+    # app's own SessionLocal/engine entirely
+    fresh_engine = create_engine("sqlite:///./test_suite.db")
+    FreshSession = sessionmaker(bind=fresh_engine)
+    fresh_db = FreshSession()
+    try:
+        row = fresh_db.query(ReimbursementRequest).filter(ReimbursementRequest.id == request_id).first()
+        assert row is not None
+        assert row.title == "Persistence check"
+        assert row.amount == 42.42
+    finally:
+        fresh_db.close()
+        fresh_engine.dispose()
+
+
 def test_analytics_requester_sees_only_own_data_no_cross_user_views():
     req_token = login("req@test.com")
     rev_token = login("rev@test.com")
@@ -898,8 +927,9 @@ def test_analytics_does_not_n_plus_one_query_per_distinct_user():
     """Regression test: analytics.py used to access r.requester.name /
     r.reviewer.name in a loop with no eager loading. Locks in a generous
     upper bound rather than an exact count, since exact counts are fragile."""
-    from app.core.database import engine
     from sqlalchemy import event
+
+    from app.core.database import engine
 
     req_token = login("req@test.com")
     rev_token = login("rev@test.com")
@@ -1033,7 +1063,7 @@ def test_multi_value_status_filter():
     client.post(f"/api/requests/{approved_id}/submit", headers=auth_headers(req_token))
     client.post(f"/api/requests/{approved_id}/approve", headers=auth_headers(rev_token), json={})
 
-    draft_resp = client.post("/api/requests", headers=auth_headers(req_token), json={
+    client.post("/api/requests", headers=auth_headers(req_token), json={
         "title": "Still a draft", "amount": 15, "expense_date": "2026-01-05", "category": "other",
     })
 
@@ -1117,9 +1147,8 @@ def test_cursor_pagination_walks_through_without_gaps_or_overlap():
     a request to /requests/cursor incorrectly matched /{request_id} with
     request_id="cursor" and 404'd. Fixed by moving /cursor before it."""
     token = login("req@test.com")
-    fake_jpeg = b"\xff\xd8\xff" + b"0" * 20
     for i in range(5):
-        r = client.post("/api/requests", headers=auth_headers(token), json={
+        client.post("/api/requests", headers=auth_headers(token), json={
             "title": f"Cursor test {i}", "amount": 10 + i, "expense_date": "2026-01-05", "category": "other",
         })
 

@@ -13,7 +13,7 @@ from datetime import datetime, timedelta
 
 from sqlalchemy.orm import Session
 
-from app.models.models import ReimbursementRequest, StatusEnum, User, RoleEnum
+from app.models.models import ReimbursementRequest, RoleEnum, StatusEnum, User
 from app.routers.requests import _notify
 
 REMINDER_THRESHOLD_DAYS = int(os.getenv("REMINDER_THRESHOLD_DAYS", "3"))

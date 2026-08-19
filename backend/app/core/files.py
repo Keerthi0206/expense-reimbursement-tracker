@@ -1,6 +1,7 @@
 import os
 import uuid
-from fastapi import UploadFile, HTTPException, status
+
+from fastapi import HTTPException, UploadFile, status
 
 UPLOAD_DIR = os.getenv("UPLOAD_DIR", "./uploads/receipts")
 MAX_FILE_SIZE = 5 * 1024 * 1024  # 5 MB

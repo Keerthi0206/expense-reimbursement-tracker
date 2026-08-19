@@ -1,11 +1,10 @@
 from datetime import date, datetime
-from typing import Optional, List
+from typing import List, Optional
 
-from pydantic import BaseModel, EmailStr, Field, field_validator, computed_field
+from pydantic import BaseModel, EmailStr, Field, computed_field, field_validator
 
-from app.models.models import RoleEnum, StatusEnum, CategoryEnum
 from app.core.budget import get_budget_limit
-
+from app.models.models import CategoryEnum, RoleEnum, StatusEnum
 
 # ---------- Auth ----------
 
@@ -216,6 +215,12 @@ class PaginatedRequests(BaseModel):
     page_size: int
     total: int
     total_pages: int
+
+
+class CursorPageOut(BaseModel):
+    items: List[RequestOut]
+    next_cursor: Optional[str]
+    has_more: bool
 
 
 class PaginatedUsers(BaseModel):

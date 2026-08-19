@@ -3,7 +3,15 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import (
-    Column, String, Float, DateTime, Date, Enum, ForeignKey, Text, Boolean
+    Boolean,
+    Column,
+    Date,
+    DateTime,
+    Enum,
+    Float,
+    ForeignKey,
+    String,
+    Text,
 )
 from sqlalchemy.orm import relationship
 

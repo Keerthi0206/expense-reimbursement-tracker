@@ -4,9 +4,9 @@ self-protection guards, and the account-history audit trail.
 
 Run with: pytest -v
 """
+import io
 import os
 import sys
-import io
 from datetime import datetime, timedelta
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -14,10 +14,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import pytest
 from fastapi.testclient import TestClient
 
-from app.main import app
 from app.core.database import SessionLocal
 from app.core.security import hash_password
-from app.models.models import User, RoleEnum, ReimbursementRequest
+from app.main import app
+from app.models.models import ReimbursementRequest, RoleEnum, User
 
 client = TestClient(app)
 
@@ -296,6 +296,7 @@ def test_notification_cleanup_removes_only_old_read_notifications():
     req_token, req_id = login("requester@test.com")
 
     from datetime import datetime, timedelta
+
     from app.models.models import Notification
 
     db = SessionLocal()

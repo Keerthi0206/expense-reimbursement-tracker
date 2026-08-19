@@ -11,9 +11,9 @@ import re
 from datetime import datetime
 from typing import Optional
 
+import pymupdf as fitz
 import pytesseract
 from PIL import Image
-import pymupdf as fitz
 
 
 def get_file_metadata(contents: bytes, mime: str) -> dict:
