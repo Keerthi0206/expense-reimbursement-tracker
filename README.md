@@ -33,10 +33,10 @@ A full-stack reimbursement tracker built for the CDF SDE Hackathon. Requesters c
 
 ## Tech stack
 
-- **Backend:** FastAPI, SQLAlchemy, SQLite (dev) / PostgreSQL (production — see Deployment), python-jose (JWT), passlib/bcrypt
+- **Backend:** FastAPI, SQLAlchemy, SQLite (dev) / PostgreSQL (production see Deployment), python-jose (JWT), passlib/bcrypt
 - **Frontend:** Next.js 14 (App Router), plain CSS (no UI framework)
 - **Deploy target:** Render (backend) + Vercel (frontend)
-- **Local dev:** run natively, or `docker compose up --build` for one-command setup
+- **Local dev:** run natively or `docker compose up --build` for one-command setup
 
 ## Setup & run instructions
 
