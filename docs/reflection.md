@@ -25,8 +25,7 @@ Past the core Tier 1 workflow, I picked a handful of Tier 2 categories and went 
 
 ## What I'd Do Differently
 
-- Didn't attempt cloud deployment or CD, both need real hosting accounts and that felt like something to set up with the person actually running the demo not to rush through unattended
-- Skipped monitoring (Sentry or similar) for the same reason, needs a real account to be worth more than a stub
+- Skipped monitoring, needs a real account to be worth more than a stub
 - Receipt storage should move to something like S3 with signed URLs for an actual deployment, local disk is fine for a demo
 - Categories and budget thresholds are fixed in code, an admin should be able to configure those
 - E2E coverage is currently three critical-path tests there's room to grow that
