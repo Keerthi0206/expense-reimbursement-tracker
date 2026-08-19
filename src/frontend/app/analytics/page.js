@@ -2,8 +2,11 @@
 
 import { useEffect, useState } from "react";
 import RequireAuth from "../../lib/require-auth";
+import LoadingState from "../../components/LoadingState";
 import { useAuth } from "../../lib/auth-context";
 import { api } from "../../lib/api";
+import { useIsMobile } from "../../lib/useIsMobile";
+import { useFocusOnError } from "../../lib/useFocusOnError";
 import {
   ResponsiveContainer, LineChart, Line, BarChart, Bar, XAxis, YAxis,
   CartesianGrid, Tooltip, Legend, PieChart, Pie, Cell,
@@ -60,6 +63,7 @@ function AnalyticsPage() {
   const { user } = useAuth();
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
+  const errorRef = useFocusOnError(error);
   const [exporting, setExporting] = useState(false);
   const [selectedYear, setSelectedYear] = useState("");
   const [selectedMonth, setSelectedMonth] = useState("");
@@ -94,6 +98,7 @@ function AnalyticsPage() {
   }
 
   const isReviewer = user && (user.role === "reviewer" || user.role === "admin");
+  const isMobile = useIsMobile();
 
   return (
     <>
@@ -151,10 +156,10 @@ function AnalyticsPage() {
         )}
       </div>
 
-      {error && <div className="banner banner-error">{error}</div>}
+      {error && <div className="banner banner-error" role="alert" ref={errorRef} tabIndex={-1}>{error}</div>}
 
       {!data ? (
-        <p>Loading…</p>
+        <LoadingState />
       ) : (
         <>
           <div className="stat-grid" style={{ marginBottom: 24 }}>
@@ -210,22 +215,28 @@ function AnalyticsPage() {
             {data.by_category.length === 0 ? (
               <p style={{ color: "var(--ink-soft)" }}>Not enough data yet.</p>
             ) : (
-              <ResponsiveContainer width="100%" height={280}>
+              <ResponsiveContainer width="100%" height={isMobile ? 320 : 280}>
                 <PieChart>
                   <Pie
                     data={data.by_category}
                     dataKey="total"
                     nameKey="category"
                     cx="50%"
-                    cy="50%"
-                    outerRadius={90}
-                    label={(entry) => `${entry.category.replace(/_/g, " ")}: $${entry.total.toFixed(0)}`}
+                    cy={isMobile ? "40%" : "50%"}
+                    outerRadius={isMobile ? 70 : 90}
+                    label={isMobile ? false : (entry) => `${entry.category.replace(/_/g, " ")}: $${entry.total.toFixed(0)}`}
                   >
                     {data.by_category.map((entry, i) => (
                       <Cell key={entry.category} fill={CATEGORY_COLORS[i % CATEGORY_COLORS.length]} />
                     ))}
                   </Pie>
                   <Tooltip content={<ChartTooltip />} />
+                  {isMobile && (
+                    <Legend
+                      formatter={(value) => value.replace(/_/g, " ")}
+                      wrapperStyle={{ fontSize: "0.75rem" }}
+                    />
+                  )}
                 </PieChart>
               </ResponsiveContainer>
             )}
@@ -242,7 +253,7 @@ function AnalyticsPage() {
                     <BarChart data={data.by_requester} layout="vertical" margin={{ left: 20 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="var(--line)" />
                       <XAxis type="number" stroke="var(--ink-soft)" fontSize={12} tickFormatter={(v) => `$${v}`} />
-                      <YAxis type="category" dataKey="requester_name" stroke="var(--ink-soft)" fontSize={12} width={110} />
+                      <YAxis type="category" dataKey="requester_name" stroke="var(--ink-soft)" fontSize={isMobile ? 10 : 12} width={isMobile ? 75 : 110} />
                       <Tooltip content={<ChartTooltip />} />
                       <Bar dataKey="total" name="Total" fill="var(--stamp-blue)" radius={[0, 4, 4, 0]} />
                     </BarChart>
@@ -259,7 +270,7 @@ function AnalyticsPage() {
                     <BarChart data={data.reviewer_workload} layout="vertical" margin={{ left: 20 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="var(--line)" />
                       <XAxis type="number" stroke="var(--ink-soft)" fontSize={12} allowDecimals={false} />
-                      <YAxis type="category" dataKey="reviewer_name" stroke="var(--ink-soft)" fontSize={12} width={110} />
+                      <YAxis type="category" dataKey="reviewer_name" stroke="var(--ink-soft)" fontSize={isMobile ? 10 : 12} width={isMobile ? 75 : 110} />
                       <Tooltip content={<ChartTooltip isCurrency={false} />} />
                       <Legend />
                       <Bar dataKey="approved_count" name="Approved" stackId="a" fill="var(--stamp-teal)" />

@@ -5,7 +5,9 @@ import { useParams, useRouter } from "next/navigation";
 import RequireAuth from "../../../lib/require-auth";
 import { useAuth } from "../../../lib/auth-context";
 import { api } from "../../../lib/api";
+import { useFocusOnError } from "../../../lib/useFocusOnError";
 import StatusStamp from "../../../components/StatusStamp";
+import LoadingState from "../../../components/LoadingState";
 import { CATEGORY_LABELS } from "../../../components/RequestRow";
 
 const TODAY = new Date().toISOString().slice(0, 10);
@@ -17,6 +19,8 @@ function RequestDetail() {
 
   const [request, setRequest] = useState(null);
   const [error, setError] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
+  const errorRef = useFocusOnError(error);
   const [busy, setBusy] = useState(false);
   const [comment, setComment] = useState("");
   const [rejectReason, setRejectReason] = useState("");
@@ -45,6 +49,7 @@ function RequestDetail() {
       setEditDate(data.expense_date);
       setEditCategory(data.category);
       setEditDescription(data.description || "");
+      return data;
     } catch (err) {
       setError(err.message);
     }
@@ -91,6 +96,11 @@ function RequestDetail() {
   const canCancel =
     isOwner && request && ["draft", "submitted", "under_review", "changes_requested"].includes(request.status);
 
+  function showSuccess(message) {
+    setSuccessMessage(message);
+    setTimeout(() => setSuccessMessage(""), 5000);
+  }
+
   async function handleViewReceipt() {
     try {
       const url = await api.fetchReceiptBlobUrl(id);
@@ -119,8 +129,13 @@ function RequestDetail() {
     setError("");
     try {
       await api.approveRequest(id, comment || undefined);
-      await load();
+      const updated = await load();
       setComment("");
+      if (updated?.status === "pending_second_approval") {
+        showSuccess("First approval given — this now needs a second, admin-level approval.");
+      } else {
+        showSuccess("Request approved.");
+      }
     } catch (err) {
       setError(err.message);
     } finally {
@@ -141,6 +156,7 @@ function RequestDetail() {
       await load();
       setShowRejectForm(false);
       setRejectReason("");
+      showSuccess("Request rejected.");
     } catch (err) {
       setError(err.message);
     } finally {
@@ -154,6 +170,7 @@ function RequestDetail() {
     try {
       await api.markPaid(id);
       await load();
+      showSuccess("Marked as paid.");
     } catch (err) {
       setError(err.message);
     } finally {
@@ -174,6 +191,7 @@ function RequestDetail() {
       await load();
       setShowInfoForm(false);
       setInfoMessage("");
+      showSuccess("Sent back to the requester for more information.");
     } catch (err) {
       setError(err.message);
     } finally {
@@ -192,6 +210,7 @@ function RequestDetail() {
     try {
       await api.cancelRequest(id, reason || undefined);
       await load();
+      showSuccess("Request cancelled.");
     } catch (err) {
       setError(err.message);
     } finally {
@@ -230,6 +249,7 @@ function RequestDetail() {
         setEditReceiptFile(null);
       }
       await load();
+      showSuccess("Draft saved.");
     } catch (err) {
       setError(err.message);
     } finally {
@@ -261,6 +281,7 @@ function RequestDetail() {
       }
       await api.submitRequest(id);
       await load();
+      showSuccess("Submitted for review.");
     } catch (err) {
       setError(err.message);
     } finally {
@@ -269,9 +290,9 @@ function RequestDetail() {
   }
 
   if (error && !request) {
-    return <div className="banner banner-error">{error}</div>;
+    return <div className="banner banner-error" role="alert" ref={errorRef} tabIndex={-1}>{error}</div>;
   }
-  if (!request) return <p>Loading…</p>;
+  if (!request) return <LoadingState />;
 
   return (
     <>
@@ -290,7 +311,8 @@ function RequestDetail() {
         </div>
       </div>
 
-      {error && <div className="banner banner-error">{error}</div>}
+      {error && <div className="banner banner-error" role="alert" ref={errorRef} tabIndex={-1}>{error}</div>}
+      {successMessage && <div className="banner banner-success" role="status">{successMessage}</div>}
 
       <div className="card">
         <div className="form-row">
@@ -328,12 +350,17 @@ function RequestDetail() {
           {request.receipt_filename ? (
             <div style={{ display: "flex", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
               {receiptUrl && /\.(jpe?g|png)$/i.test(request.receipt_filename) && (
-                <img
-                  src={receiptUrl}
-                  alt="Receipt"
+                <button
                   onClick={handleViewReceipt}
-                  style={{ width: 90, height: 90, objectFit: "cover", borderRadius: 4, border: "1px solid var(--line)", cursor: "pointer" }}
-                />
+                  aria-label="Open full-size receipt image"
+                  style={{ padding: 0, border: "1px solid var(--line)", borderRadius: 4, background: "none", cursor: "pointer", lineHeight: 0 }}
+                >
+                  <img
+                    src={receiptUrl}
+                    alt="Receipt thumbnail"
+                    style={{ width: 90, height: 90, objectFit: "cover", borderRadius: 3, display: "block" }}
+                  />
+                </button>
               )}
               <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-start" }}>
                 <button className="btn btn-sm" onClick={handleViewReceipt}>
@@ -390,7 +417,7 @@ function RequestDetail() {
           </div>
         )}
         {request.status === "rejected" && request.rejection_reason && (
-          <div className="banner banner-error" style={{ marginTop: 16 }}>
+          <div className="banner banner-error" role="alert" style={{ marginTop: 16 }}>
             <strong>Rejection reason:</strong> {request.rejection_reason}
           </div>
         )}
@@ -400,7 +427,7 @@ function RequestDetail() {
           </div>
         )}
         {request.reviewer_comment && request.status !== "rejected" && (
-          <div className="banner banner-success" style={{ marginTop: 16 }}>
+          <div className="banner banner-success" role="status" style={{ marginTop: 16 }}>
             <strong>Reviewer comment:</strong> {request.reviewer_comment}
           </div>
         )}

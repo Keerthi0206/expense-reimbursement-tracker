@@ -557,6 +557,12 @@ textarea {
   }
 }
 
+@media (max-width: 420px) {
+  .stat-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .stat-tile {
   background: var(--paper-raised);
   border: 1px solid var(--line);
@@ -643,12 +649,49 @@ textarea {
   color: var(--ink-soft);
 }
 
+@media (max-width: 560px) {
+  .filter-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .filter-field {
+    width: 100%;
+  }
+  .filter-field select,
+  .filter-field input {
+    width: 100%;
+  }
+}
+
 .empty-state {
   text-align: center;
   padding: 48px 24px;
   color: var(--ink-soft);
   border: 1px dashed var(--line);
   border-radius: 6px;
+}
+
+.loading-state {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 32px 0;
+  color: var(--ink-soft);
+  font-size: 0.9rem;
+}
+
+.spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--line);
+  border-top-color: var(--stamp-teal);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
 .pagination {

@@ -3,7 +3,9 @@
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import RequireAuth from "../../lib/require-auth";
+import LoadingState from "../../components/LoadingState";
 import { api } from "../../lib/api";
+import { useFocusOnError } from "../../lib/useFocusOnError";
 
 function formatDate(iso) {
   return new Date(iso).toLocaleString("en-US", {
@@ -16,6 +18,7 @@ function NotificationsPage() {
   const [data, setData] = useState(null);
   const [page, setPage] = useState(1);
   const [error, setError] = useState("");
+  const errorRef = useFocusOnError(error);
   const [busyId, setBusyId] = useState(null);
   const [markingAll, setMarkingAll] = useState(false);
 
@@ -79,10 +82,10 @@ function NotificationsPage() {
         )}
       </div>
 
-      {error && <div className="banner banner-error">{error}</div>}
+      {error && <div className="banner banner-error" role="alert" ref={errorRef} tabIndex={-1}>{error}</div>}
 
       {!data ? (
-        <p>Loading…</p>
+        <LoadingState />
       ) : notifications.length === 0 ? (
         <div className="empty-state">
           <p>No notifications yet.</p>

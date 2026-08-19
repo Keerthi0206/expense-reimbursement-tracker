@@ -2,8 +2,10 @@
 
 import { useEffect, useState, useCallback } from "react";
 import RequireAuth from "../../lib/require-auth";
+import LoadingState from "../../components/LoadingState";
 import { useAuth } from "../../lib/auth-context";
 import { api } from "../../lib/api";
+import { useFocusOnError } from "../../lib/useFocusOnError";
 
 const ROLE_LABELS = { admin: "Admin", reviewer: "Reviewer", requester: "Requester" };
 
@@ -19,6 +21,7 @@ function AdminPage() {
   const [data, setData] = useState(null);
   const [page, setPage] = useState(1);
   const [error, setError] = useState("");
+  const errorRef = useFocusOnError(error);
   const [busyId, setBusyId] = useState(null);
   const [expandedHistory, setExpandedHistory] = useState({}); // userId -> history[] | "loading"
   const [reminderBusy, setReminderBusy] = useState(false);
@@ -36,6 +39,7 @@ function AdminPage() {
   const [newRole, setNewRole] = useState("requester");
   const [createBusy, setCreateBusy] = useState(false);
   const [createError, setCreateError] = useState("");
+  const createErrorRef = useFocusOnError(createError);
 
   const load = useCallback(async () => {
     try {
@@ -174,8 +178,8 @@ function AdminPage() {
         </div>
       </div>
 
-      {reminderMessage && <div className="banner banner-success">{reminderMessage}</div>}
-      {error && <div className="banner banner-error">{error}</div>}
+      {reminderMessage && <div className="banner banner-success" role="status">{reminderMessage}</div>}
+      {error && <div className="banner banner-error" role="alert" ref={errorRef} tabIndex={-1}>{error}</div>}
 
       <div className="filter-bar">
         <div className="filter-field">
@@ -238,7 +242,7 @@ function AdminPage() {
       {showCreateForm && (
         <div className="card" style={{ marginBottom: 20 }}>
           <div className="eyebrow" style={{ marginBottom: 12 }}>Create account</div>
-          {createError && <div className="banner banner-error">{createError}</div>}
+          {createError && <div className="banner banner-error" role="alert" ref={createErrorRef} tabIndex={-1}>{createError}</div>}
           <form onSubmit={handleCreateUser}>
             <div className="form-row">
               <div className="field">
@@ -271,8 +275,21 @@ function AdminPage() {
         </div>
       )}
 
-      {users.length === 0 ? (
-        <div className="empty-state">Loading users…</div>
+      {!data ? (
+        <LoadingState label="Loading users…" />
+      ) : users.length === 0 ? (
+        <div className="empty-state">
+          <p>No users match your filters.</p>
+          {(roleFilter || statusFilter || search) && (
+            <button
+              className="btn btn-sm"
+              onClick={() => { setRoleFilter(""); setStatusFilter(""); setSearch(""); setPage(1); }}
+              style={{ marginTop: 12 }}
+            >
+              Clear filters
+            </button>
+          )}
+        </div>
       ) : (
         users.map((u) => {
           const isSelf = u.id === currentUser.id;
@@ -324,7 +341,7 @@ function AdminPage() {
                 <div className="card" style={{ marginTop: -6, marginBottom: 14 }}>
                   <div className="eyebrow" style={{ marginBottom: 8 }}>Role & status history</div>
                   {history === "loading" ? (
-                    <div style={{ color: "var(--ink-soft)", fontSize: "0.85rem" }}>Loading…</div>
+                    <LoadingState label="Loading history…" />
                   ) : history.length === 0 ? (
                     <div style={{ color: "var(--ink-soft)", fontSize: "0.85rem" }}>No changes recorded yet.</div>
                   ) : (

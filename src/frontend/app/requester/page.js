@@ -1,18 +1,34 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, Suspense } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import RequireAuth from "../../lib/require-auth";
+import LoadingState from "../../components/LoadingState";
 import { api } from "../../lib/api";
 import RequestRow from "../../components/RequestRow";
+import { useFocusOnError } from "../../lib/useFocusOnError";
 
 function RequesterHome() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [data, setData] = useState(null);
-  const [statusFilter, setStatusFilter] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState("");
-  const [keyword, setKeyword] = useState("");
-  const [page, setPage] = useState(1);
+  const [statusFilter, setStatusFilter] = useState(() => searchParams.get("status") || "");
+  const [categoryFilter, setCategoryFilter] = useState(() => searchParams.get("category") || "");
+  const [keyword, setKeyword] = useState(() => searchParams.get("q") || "");
+  const [page, setPage] = useState(() => parseInt(searchParams.get("page") || "1", 10) || 1);
   const [error, setError] = useState("");
+  const errorRef = useFocusOnError(error);
+
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (statusFilter) params.set("status", statusFilter);
+    if (categoryFilter) params.set("category", categoryFilter);
+    if (keyword) params.set("q", keyword);
+    if (page !== 1) params.set("page", String(page));
+    const qs = params.toString();
+    router.replace(qs ? `?${qs}` : "?", { scroll: false });
+  }, [statusFilter, categoryFilter, keyword, page, router]);
 
   const load = useCallback(async () => {
     try {
@@ -45,7 +61,7 @@ function RequesterHome() {
         </Link>
       </div>
 
-      {error && <div className="banner banner-error">{error}</div>}
+      {error && <div className="banner banner-error" role="alert" ref={errorRef} tabIndex={-1}>{error}</div>}
 
       <div className="filter-bar">
         <div className="filter-field">
@@ -115,7 +131,7 @@ function RequesterHome() {
       </div>
 
       {!data ? (
-        <p>Loading…</p>
+        <LoadingState />
       ) : data.items.length === 0 ? (
         <div className="empty-state">
           <p>No requests match these filters yet.</p>
@@ -158,7 +174,9 @@ function RequesterHome() {
 export default function Page() {
   return (
     <RequireAuth roles={["requester", "admin"]}>
-      <RequesterHome />
+      <Suspense fallback={<LoadingState />}>
+        <RequesterHome />
+      </Suspense>
     </RequireAuth>
   );
 }

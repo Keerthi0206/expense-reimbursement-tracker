@@ -1,9 +1,12 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import RequireAuth from "../../lib/require-auth";
+import LoadingState from "../../components/LoadingState";
 import { api } from "../../lib/api";
 import RequestRow from "../../components/RequestRow";
+import { useFocusOnError } from "../../lib/useFocusOnError";
 
 const STATUS_LABELS = {
   draft: "Draft",
@@ -18,22 +21,46 @@ const STATUS_LABELS = {
 };
 
 function ReviewerHome() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [dashboard, setDashboard] = useState(null);
   const [data, setData] = useState(null);
   const [requesters, setRequesters] = useState([]);
-  const [statusFilter, setStatusFilter] = useState("pending");
-  const [categoryFilter, setCategoryFilter] = useState("");
-  const [requesterFilter, setRequesterFilter] = useState("");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
-  const [minAmount, setMinAmount] = useState("");
-  const [maxAmount, setMaxAmount] = useState("");
-  const [keyword, setKeyword] = useState("");
-  const [sortBy, setSortBy] = useState("created_at");
-  const [order, setOrder] = useState("desc");
-  const [page, setPage] = useState(1);
+  const [statusFilter, setStatusFilter] = useState(() => searchParams.get("status") || "pending");
+  const [categoryFilter, setCategoryFilter] = useState(() => searchParams.get("category") || "");
+  const [requesterFilter, setRequesterFilter] = useState(() => searchParams.get("requester") || "");
+  const [dateFrom, setDateFrom] = useState(() => searchParams.get("date_from") || "");
+  const [dateTo, setDateTo] = useState(() => searchParams.get("date_to") || "");
+  const [minAmount, setMinAmount] = useState(() => searchParams.get("min_amount") || "");
+  const [maxAmount, setMaxAmount] = useState(() => searchParams.get("max_amount") || "");
+  const [keyword, setKeyword] = useState(() => searchParams.get("q") || "");
+  const [sortBy, setSortBy] = useState(() => searchParams.get("sort_by") || "created_at");
+  const [order, setOrder] = useState(() => searchParams.get("order") || "desc");
+  const [page, setPage] = useState(() => parseInt(searchParams.get("page") || "1", 10) || 1);
   const [error, setError] = useState("");
-  const [showAdvanced, setShowAdvanced] = useState(false);
+  const errorRef = useFocusOnError(error);
+  const [showAdvanced, setShowAdvanced] = useState(
+    () => !!(searchParams.get("category") || searchParams.get("requester") || searchParams.get("date_from") ||
+             searchParams.get("date_to") || searchParams.get("min_amount") || searchParams.get("max_amount"))
+  );
+
+  // keeps the URL in sync with filters -- bookmarkable, shareable, survives refresh
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (statusFilter && statusFilter !== "pending") params.set("status", statusFilter);
+    if (categoryFilter) params.set("category", categoryFilter);
+    if (requesterFilter) params.set("requester", requesterFilter);
+    if (dateFrom) params.set("date_from", dateFrom);
+    if (dateTo) params.set("date_to", dateTo);
+    if (minAmount) params.set("min_amount", minAmount);
+    if (maxAmount) params.set("max_amount", maxAmount);
+    if (keyword) params.set("q", keyword);
+    if (sortBy !== "created_at") params.set("sort_by", sortBy);
+    if (order !== "desc") params.set("order", order);
+    if (page !== 1) params.set("page", String(page));
+    const qs = params.toString();
+    router.replace(qs ? `?${qs}` : "?", { scroll: false });
+  }, [statusFilter, categoryFilter, requesterFilter, dateFrom, dateTo, minAmount, maxAmount, keyword, sortBy, order, page, router]);
 
   const loadDashboard = useCallback(() => {
     api.dashboard().then(setDashboard).catch((err) => setError(err.message));
@@ -102,7 +129,7 @@ function ReviewerHome() {
         </div>
       </div>
 
-      {error && <div className="banner banner-error">{error}</div>}
+      {error && <div className="banner banner-error" role="alert" ref={errorRef} tabIndex={-1}>{error}</div>}
 
       {dashboard && (
         <div className="stat-grid">
@@ -322,10 +349,22 @@ function ReviewerHome() {
       )}
 
       {!data ? (
-        <p>Loading…</p>
+        <LoadingState />
       ) : data.items.length === 0 ? (
         <div className="empty-state">
-          <p>Nothing here right now.</p>
+          {statusFilter === "pending" && !keyword && !categoryFilter && !requesterFilter && !dateFrom && !dateTo && !minAmount && !maxAmount ? (
+            <>
+              <p style={{ fontSize: "1.1rem" }}>✓ You&rsquo;re all caught up</p>
+              <p style={{ fontSize: "0.85rem", marginTop: 4 }}>Nothing is waiting on your review right now.</p>
+            </>
+          ) : (
+            <>
+              <p>No requests match these filters.</p>
+              <button className="btn btn-sm" onClick={clearFilters} style={{ marginTop: 12 }}>
+                Clear filters
+              </button>
+            </>
+          )}
         </div>
       ) : (
         <>
@@ -358,7 +397,9 @@ function ReviewerHome() {
 export default function Page() {
   return (
     <RequireAuth roles={["reviewer", "admin"]}>
-      <ReviewerHome />
+      <Suspense fallback={<LoadingState />}>
+        <ReviewerHome />
+      </Suspense>
     </RequireAuth>
   );
 }
