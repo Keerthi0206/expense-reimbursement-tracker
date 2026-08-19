@@ -7,7 +7,7 @@ A full-stack reimbursement tracker built for the CDF SDE Hackathon. Requesters c
 ## Features implemented
 
 - Create → Submit → Review → Approve/Reject → Paid workflow, fully connected end to end
-- Draft requests: save now, edit and finish later — a receipt is only required to submit, not to save a draft
+- Draft requests: save now, edit and finish later, a receipt is only required to submit, not to save a draft
 - Reviewer "claim" flow: opening a submitted request moves it to Under Review; a `status=pending` filter alias keeps it visible in the review queue either way
 - Request more information: a reviewer can send a submitted request back with a required message instead of approving or rejecting outright — the requester edits and resubmits it, cleanly modeled as its own status (`changes_requested`), not a bolt-on comment
 - Approval reversal: a reviewer can reject an approved-but-unpaid request with a reason to correct a mistake — locked out entirely once the request is Paid
