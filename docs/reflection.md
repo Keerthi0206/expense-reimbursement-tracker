@@ -6,12 +6,12 @@ A full-stack reimbursement tracker: FastAPI backend (SQLite locally, PostgreSQL 
 
 Past the core Tier 1 workflow, I picked a handful of Tier 2 categories and went deep on them instead of spreading thin across all of them:
 
-- **Workflow depth**: resubmission after rejection, duplicate-request detection, budget-limit warnings, a two-tier approval flow (high-value or training-category requests need a second sign-off from an admin), scheduled reminders and notification cleanup, and email notifications built as an optional integration that's off by default.
-- **Receipt intelligence**: Tesseract OCR (local, no external API) reads amount/date/merchant off an uploaded receipt — image or PDF, scanned or not — and offers them as suggestions the requester clicks to apply, never auto-filled. A consistency check on the detail page re-reads the stored receipt and flags it if the submitted amount or date doesn't match.
+- **Workflow depth**: resubmission after rejection, duplicate-request detection, budget-limit warnings, a two-tier approval flow (high-value or training-category requests need a second sign-off from an admin), scheduled reminders and notification cleanup and email notifications built as an optional integration that's off by default.
+- **Receipt intelligence**: Tesseract OCR (local, no external API) reads amount/date/merchant off an uploaded receipt image or PDF, scanned or not and offers them as suggestions the requester clicks to apply, never auto-filled. A consistency check on the detail page re-reads the stored receipt and flags it if the submitted amount or date doesn't match.
 - **Analytics**: monthly trends, category and requester breakdowns, approval-time stats, reviewer workload, CSV/PDF export.
-- **Backend/API depth**: Alembic migrations instead of `create_all`, indexes on the columns that actually get filtered on, cursor pagination alongside page-based, `/api/v1/` versioning, rate limiting, structured JSON logging, and a health check that actually pings the database.
+- **Backend/API depth**: Alembic migrations instead of `create_all`, indexes on the columns that actually get filtered on, cursor pagination alongside page-based, `/api/v1/` versioning, rate limiting, structured JSON logging and a health check that actually pings the database.
 - **Accessibility**: screen-reader support, keyboard reachability, focus management on errors, mobile-responsive layouts and charts, URL-persisted filters.
-- **Testing & CI**: 87 backend tests, 3 Playwright E2E tests, both linters wired into a GitHub Actions pipeline that runs on every push.
+- **Testing & CI**: 91 backend tests, 3 Playwright E2E tests, both linters wired into a GitHub Actions pipeline that runs on every push.
 
 ## Key decisions and tradeoffs
 
