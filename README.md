@@ -1,6 +1,6 @@
 # CDF Expense & Reimbursement Tracker
 
-**Live URL:** _add after deploying_
+**Live URL:** [_Deployment_](https://expense-reimbursement-tracker-three.vercel.app)
 
 A full-stack reimbursement tracker built for the CDF SDE Hackathon. Requesters create and submit expense requests with receipts; reviewers approve, reject or mark them paid; both sides can track status, search and filter. Built with FastAPI + SQLite on the backend and Next.js on the frontend.
 
