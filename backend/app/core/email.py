@@ -13,8 +13,8 @@ Without real credentials, this just logs what it would have sent instead
 of failing. Send errors are caught and logged too, never raised -- a
 broken mail server should never break the request action that triggered it.
 """
-import os
 import logging
+import os
 import smtplib
 from email.message import EmailMessage
 

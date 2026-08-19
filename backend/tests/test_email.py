@@ -12,7 +12,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app.core.email import send_email, _is_configured
+from app.core.email import _is_configured, send_email
 
 
 def test_email_noops_when_disabled(monkeypatch):
