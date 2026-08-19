@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useAuth } from "../../lib/auth-context";
 import { useTheme } from "../../lib/theme-context";
+import { useFocusOnError } from "../../lib/useFocusOnError";
 
 function SunIcon() {
   return (
@@ -28,6 +29,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const errorRef = useFocusOnError(error);
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -65,7 +67,7 @@ export default function LoginPage() {
           Sign in to submit or review reimbursement requests.
         </p>
 
-        {error && <div className="banner banner-error">{error}</div>}
+        {error && <div className="banner banner-error" role="alert" ref={errorRef} tabIndex={-1}>{error}</div>}
 
         <form onSubmit={handleSubmit}>
           <div className="field">

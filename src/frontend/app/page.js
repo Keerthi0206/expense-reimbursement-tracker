@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../lib/auth-context";
+import LoadingState from "../components/LoadingState";
 
 export default function Home() {
   const { user, loading } = useAuth();
@@ -21,5 +22,5 @@ export default function Home() {
     }
   }, [user, loading, router]);
 
-  return <div className="center-shell">Loading…</div>;
+  return <div className="center-shell"><LoadingState /></div>;
 }

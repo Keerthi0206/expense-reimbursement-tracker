@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import RequireAuth from "../../../lib/require-auth";
 import { api } from "../../../lib/api";
+import { useFocusOnError } from "../../../lib/useFocusOnError";
 
 const TODAY = new Date().toISOString().slice(0, 10);
 
@@ -28,6 +29,7 @@ function NewRequestForm() {
   const [receiptFile, setReceiptFile] = useState(null);
   const [fieldErrors, setFieldErrors] = useState({});
   const [error, setError] = useState("");
+  const errorRef = useFocusOnError(error);
   const [busy, setBusy] = useState(false);
   const [step, setStep] = useState("form"); // form -> saved -> done
   const [duplicates, setDuplicates] = useState([]);
@@ -173,8 +175,8 @@ function NewRequestForm() {
         </div>
       </div>
 
-      {error && <div className="banner banner-error">{error}</div>}
-      {step === "done" && <div className="banner banner-success">Saved. Redirecting…</div>}
+      {error && <div className="banner banner-error" role="alert" ref={errorRef} tabIndex={-1}>{error}</div>}
+      {step === "done" && <div className="banner banner-success" role="status">Saved. Redirecting…</div>}
 
       <div className="card">
         <form onSubmit={handleSaveAndSubmit}>
@@ -189,8 +191,10 @@ function NewRequestForm() {
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="e.g. Printer paper and toner"
+              aria-invalid={!!fieldErrors.title}
+              aria-describedby={fieldErrors.title ? "title-error" : undefined}
             />
-            {fieldErrors.title && <div className="field-error">{fieldErrors.title}</div>}
+            {fieldErrors.title && <div className="field-error" id="title-error">{fieldErrors.title}</div>}
           </div>
 
           <div className="form-row">
@@ -204,8 +208,10 @@ function NewRequestForm() {
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
                 placeholder="0.00"
+                aria-invalid={!!fieldErrors.amount}
+                aria-describedby={fieldErrors.amount ? "amount-error" : undefined}
               />
-              {fieldErrors.amount && <div className="field-error">{fieldErrors.amount}</div>}
+              {fieldErrors.amount && <div className="field-error" id="amount-error">{fieldErrors.amount}</div>}
             </div>
             <div className="field">
               <label htmlFor="date">Expense date</label>
@@ -215,14 +221,22 @@ function NewRequestForm() {
                 max={TODAY}
                 value={expenseDate}
                 onChange={(e) => setExpenseDate(e.target.value)}
+                aria-invalid={!!fieldErrors.expenseDate}
+                aria-describedby={fieldErrors.expenseDate ? "date-error" : undefined}
               />
-              {fieldErrors.expenseDate && <div className="field-error">{fieldErrors.expenseDate}</div>}
+              {fieldErrors.expenseDate && <div className="field-error" id="date-error">{fieldErrors.expenseDate}</div>}
             </div>
           </div>
 
           <div className="field">
             <label htmlFor="category">Category</label>
-            <select id="category" value={category} onChange={(e) => setCategory(e.target.value)}>
+            <select
+              id="category"
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              aria-invalid={!!fieldErrors.category}
+              aria-describedby={fieldErrors.category ? "category-error" : undefined}
+            >
               <option value="">Select a category…</option>
               <option value="travel">Travel</option>
               <option value="meals">Meals</option>
@@ -232,7 +246,7 @@ function NewRequestForm() {
               <option value="training">Training</option>
               <option value="other">Other</option>
             </select>
-            {fieldErrors.category && <div className="field-error">{fieldErrors.category}</div>}
+            {fieldErrors.category && <div className="field-error" id="category-error">{fieldErrors.category}</div>}
           </div>
 
           <div className="field">
