@@ -289,3 +289,37 @@ def test_reminders_go_out_for_stale_pending_requests():
 
     no_new_notif_resp = client.get("/api/notifications", headers=auth_headers(rev_token))
     assert no_new_notif_resp.json()["total"] == after_data["total"]
+
+
+def test_notification_cleanup_removes_only_old_read_notifications():
+    admin_token, _ = login("admin1@test.com")
+    req_token, req_id = login("requester@test.com")
+
+    from datetime import datetime, timedelta
+    from app.models.models import Notification
+
+    db = SessionLocal()
+    old_read = Notification(user_id=req_id, message="Old read", is_read=True,
+                             created_at=datetime.utcnow() - timedelta(days=120))
+    old_unread = Notification(user_id=req_id, message="Old unread", is_read=False,
+                               created_at=datetime.utcnow() - timedelta(days=120))
+    recent_read = Notification(user_id=req_id, message="Recent read", is_read=True,
+                                created_at=datetime.utcnow() - timedelta(days=5))
+    db.add_all([old_read, old_unread, recent_read])
+    db.commit()
+    db.close()
+
+    # non-admin can't trigger this either
+    forbidden_resp = client.post("/api/admin/trigger-notification-cleanup", headers=auth_headers(req_token))
+    assert forbidden_resp.status_code == 403
+
+    trigger_resp = client.post("/api/admin/trigger-notification-cleanup", headers=auth_headers(admin_token))
+    assert trigger_resp.status_code == 200
+    assert trigger_resp.json()["notifications_deleted"] == 1
+
+    db = SessionLocal()
+    remaining = [n.message for n in db.query(Notification).filter(Notification.user_id == req_id).all()]
+    db.close()
+    assert "Old read" not in remaining
+    assert "Old unread" in remaining
+    assert "Recent read" in remaining

@@ -81,6 +81,26 @@ def test_login_unknown_email_returns_401_not_500():
     assert resp.status_code == 401
 
 
+def test_login_is_rate_limited_after_repeated_attempts():
+    """Rate limiting is off for the rest of this suite (conftest.py sets
+    RATE_LIMIT_ENABLED=false, since 100+ login calls across the tests would
+    otherwise trip any limit tight enough to mean anything). Temporarily
+    flips the live limiter's .enabled flag for just this test -- the env
+    var is only read once at import time, so it can't be re-read here."""
+    from app.core.rate_limit import limiter
+
+    limiter.enabled = True
+    try:
+        statuses = [
+            client.post("/api/auth/login", json={"email": "req@test.com", "password": "wrong"}).status_code
+            for _ in range(25)
+        ]
+        assert 401 in statuses  # the early attempts still just fail auth normally
+        assert 429 in statuses  # but it does eventually kick in
+    finally:
+        limiter.enabled = False
+
+
 def test_create_request_requires_auth():
     resp = client.post("/api/requests", json={
         "title": "x", "amount": 5, "expense_date": "2026-01-01", "category": "other",
@@ -874,6 +894,43 @@ def test_analytics_reviewer_sees_cross_user_breakdowns():
     assert data["approval_time"]["count"] >= 1
 
 
+def test_analytics_does_not_n_plus_one_query_per_distinct_user():
+    """Regression test: analytics.py used to access r.requester.name /
+    r.reviewer.name in a loop with no eager loading. Locks in a generous
+    upper bound rather than an exact count, since exact counts are fragile."""
+    from app.core.database import engine
+    from sqlalchemy import event
+
+    req_token = login("req@test.com")
+    rev_token = login("rev@test.com")
+    fake_jpeg = b"\xff\xd8\xff" + b"0" * 20
+
+    for i in range(5):
+        r = client.post("/api/requests", headers=auth_headers(req_token), json={
+            "title": f"N+1 test {i}", "amount": 20 + i, "expense_date": "2026-05-01", "category": "other",
+        })
+        rid = r.json()["id"]
+        client.post(f"/api/requests/{rid}/receipt", headers=auth_headers(req_token),
+                    files={"file": ("r.jpg", io.BytesIO(fake_jpeg), "image/jpeg")})
+        client.post(f"/api/requests/{rid}/submit", headers=auth_headers(req_token))
+        client.post(f"/api/requests/{rid}/approve", headers=auth_headers(rev_token), json={})
+
+    query_count = {"n": 0}
+
+    def count_queries(conn, cursor, statement, parameters, context, executemany):
+        query_count["n"] += 1
+
+    event.listen(engine, "before_cursor_execute", count_queries)
+    try:
+        resp = client.get("/api/requests/stats/analytics", headers=auth_headers(rev_token))
+    finally:
+        event.remove(engine, "before_cursor_execute", count_queries)
+
+    assert resp.status_code == 200
+    # a handful of fixed queries regardless of row count, not one per row
+    assert query_count["n"] < 10
+
+
 def test_analytics_date_range_filters_correctly():
     token = login("req@test.com")
     fake_jpeg = b"\xff\xd8\xff" + b"0" * 20
@@ -962,6 +1019,35 @@ def test_export_respects_status_filter():
             assert ",approved," in line
 
 
+def test_multi_value_status_filter():
+    req_token = login("req@test.com")
+    rev_token = login("rev@test.com")
+    fake_jpeg = b"\xff\xd8\xff" + b"0" * 20
+
+    approved_resp = client.post("/api/requests", headers=auth_headers(req_token), json={
+        "title": "Will be approved", "amount": 30, "expense_date": "2026-01-05", "category": "other",
+    })
+    approved_id = approved_resp.json()["id"]
+    client.post(f"/api/requests/{approved_id}/receipt", headers=auth_headers(req_token),
+                files={"file": ("r.jpg", io.BytesIO(fake_jpeg), "image/jpeg")})
+    client.post(f"/api/requests/{approved_id}/submit", headers=auth_headers(req_token))
+    client.post(f"/api/requests/{approved_id}/approve", headers=auth_headers(rev_token), json={})
+
+    draft_resp = client.post("/api/requests", headers=auth_headers(req_token), json={
+        "title": "Still a draft", "amount": 15, "expense_date": "2026-01-05", "category": "other",
+    })
+
+    resp = client.get("/api/requests?status=approved,draft", headers=auth_headers(req_token))
+    assert resp.status_code == 200
+    statuses = {item["status"] for item in resp.json()["items"]}
+    assert statuses.issubset({"approved", "draft"})
+    assert "approved" in statuses
+    assert "draft" in statuses
+
+    bad_resp = client.get("/api/requests?status=approved,not-a-real-status", headers=auth_headers(req_token))
+    assert bad_resp.status_code == 422
+
+
 def test_search_and_filter():
     token = login("req@test.com")
     resp = client.get("/api/requests?category=meals&page=1&page_size=5", headers=auth_headers(token))
@@ -1023,6 +1109,38 @@ def test_duplicate_check_finds_matching_amount_and_date():
         headers=auth_headers(req_token),
     )
     assert after_cancel_check.json() == []
+
+
+def test_cursor_pagination_walks_through_without_gaps_or_overlap():
+    """Also a regression test for a real route-ordering bug: /cursor was
+    initially registered AFTER /{request_id}, both single-segment paths, so
+    a request to /requests/cursor incorrectly matched /{request_id} with
+    request_id="cursor" and 404'd. Fixed by moving /cursor before it."""
+    token = login("req@test.com")
+    fake_jpeg = b"\xff\xd8\xff" + b"0" * 20
+    for i in range(5):
+        r = client.post("/api/requests", headers=auth_headers(token), json={
+            "title": f"Cursor test {i}", "amount": 10 + i, "expense_date": "2026-01-05", "category": "other",
+        })
+
+    first_page = client.get("/api/requests/cursor?limit=2", headers=auth_headers(token))
+    assert first_page.status_code == 200
+    first_data = first_page.json()
+    assert len(first_data["items"]) == 2
+    assert first_data["has_more"] is True
+    assert first_data["next_cursor"] is not None
+
+    second_page = client.get(
+        f"/api/requests/cursor?limit=2&cursor={first_data['next_cursor']}", headers=auth_headers(token)
+    )
+    second_data = second_page.json()
+
+    first_ids = {item["id"] for item in first_data["items"]}
+    second_ids = {item["id"] for item in second_data["items"]}
+    assert first_ids.isdisjoint(second_ids)  # no repeated rows across pages
+
+    invalid_resp = client.get("/api/requests/cursor?cursor=garbage-not-a-real-cursor", headers=auth_headers(token))
+    assert invalid_resp.status_code == 422
 
 
 def test_sorting_requests_by_amount():

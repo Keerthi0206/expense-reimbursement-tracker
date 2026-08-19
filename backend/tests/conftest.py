@@ -10,6 +10,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 os.environ["DATABASE_URL"] = "sqlite:///./test_suite.db"
 os.environ["UPLOAD_DIR"] = "./test_suite_uploads"
+os.environ["RATE_LIMIT_ENABLED"] = "false"
 
 import shutil
 
