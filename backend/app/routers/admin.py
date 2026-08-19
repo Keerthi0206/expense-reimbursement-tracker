@@ -7,13 +7,14 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.security import require_role, hash_password
 from app.core.reminders import send_pending_reminders, REMINDER_THRESHOLD_DAYS
+from app.core.notification_cleanup import cleanup_old_notifications, NOTIFICATION_RETENTION_DAYS
 from app.models.models import User, RoleEnum, UserAccountHistory
 from app.schemas.schemas import (
     UserOut, UserCreate, UserRoleUpdate, UserStatusUpdate, UserDetailOut,
     PaginatedUsers, PaginatedUserHistory,
 )
 
-router = APIRouter(prefix="/api/admin", tags=["admin"])
+router = APIRouter(prefix="/admin", tags=["admin"])
 
 
 def _log_account_history(db: Session, user_id: str, performed_by_id: str, action: str,
@@ -176,3 +177,14 @@ def trigger_reminders(
     waiting REMINDER_THRESHOLD_DAYS of real wall-clock time."""
     count = send_pending_reminders(db)
     return {"reminders_sent": count, "threshold_days": REMINDER_THRESHOLD_DAYS}
+
+
+@router.post("/trigger-notification-cleanup")
+def trigger_notification_cleanup(
+    current_user: User = Depends(require_role(RoleEnum.admin.value)),
+    db: Session = Depends(get_db),
+):
+    """Manually runs the same notification cleanup job the scheduler runs
+    daily -- same rationale as trigger-reminders above."""
+    deleted = cleanup_old_notifications(db)
+    return {"notifications_deleted": deleted, "retention_days": NOTIFICATION_RETENTION_DAYS}
