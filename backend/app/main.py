@@ -1,5 +1,7 @@
 import logging
 import os
+import subprocess
+import sys
 import time
 import uuid
 from contextlib import asynccontextmanager
@@ -32,6 +34,32 @@ run_migrations()
 # after migrations -- alembic's fileConfig() resets root log level, would swallow our logs otherwise
 configure_logging()
 logger = logging.getLogger("expense_tracker")
+
+
+def _seed_if_empty():
+    """On a genuinely fresh database (e.g. first boot in production, no
+    shell access to run seed.py manually), seed demo data automatically.
+    Never touches an existing database -- only runs when User count is 0."""
+    from app.models.models import User
+
+    db = SessionLocal()
+    try:
+        if db.query(User).count() == 0:
+            logger.info("empty database detected, running seed.py")
+            result = subprocess.run(
+                [sys.executable, "seed.py"], capture_output=True, text=True, timeout=60
+            )
+            if result.returncode == 0:
+                logger.info("seed.py completed successfully")
+            else:
+                logger.error("seed.py failed", extra={"stderr": result.stderr[-2000:]})
+    except Exception:
+        logger.exception("auto-seed check failed")
+    finally:
+        db.close()
+
+
+_seed_if_empty()
 
 
 def _run_reminder_check():
