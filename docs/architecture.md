@@ -60,12 +60,12 @@ There is no ML model in this project the "detection" work in the planning templa
 Status transitions are enforced server-side, not just hidden in the UI:
 
 - `draft → submitted`: requires a receipt to already be attached
-- `submitted → under_review`: happens automatically when a reviewer/admin (never the owner) opens the request's detail page — this is what actually populates "Under Review" rather than leaving it as a status nothing transitions into. Idempotent: reopening an already-claimed request doesn't create duplicate history entries.
-- `submitted/under_review → changes_requested`: a reviewer/admin can send a request back with a required message instead of approving or rejecting outright (`POST /request-info`), never the owner. The owner can then edit the request (same as editing a draft) and resubmit — which clears the message, logs a `resubmitted` history entry, and returns the request to `submitted`.
-- `submitted/under_review → approved` or `rejected`: reviewer/admin only, and never the request's own owner
-- `approved → rejected`: a reviewer can also reverse a mistaken approval (with a required reason) any time before payment; this is logged distinctly as `approval_revoked` in the history rather than a fresh rejection
-- `rejected` requires a non-empty reason in both the initial-rejection and approval-reversal cases (Pydantic `min_length=1` + a 422 if missing); requesting more info requires a non-empty message the same way
-- `approved → paid`: reviewer/admin only, never the owner. Once `paid`, the status is final — it cannot be rejected or reverted.
+- `submitted → under_review`: happens automatically when a reviewer/admin (never the owner) opens the request's detail page this is what actually populates "Under Review" rather than leaving it as a status nothing transitions into. Idempotent: reopening an already-claimed request doesn't create duplicate history entries.
+- `submitted/under_review → changes_requested`: a reviewer/admin can send a request back with a required message instead of approving or rejecting outright (`POST /request-info`), never the owner. The owner can then edit the request (same as editing a draft) and resubmit which clears the message, logs a `resubmitted` history entry and returns the request to `submitted`.
+- `submitted/under_review → approved` or `rejected`: reviewer/admin only and never the request's own owner
+- `approved → rejected`: a reviewer can also reverse a mistaken approval (with a required reason) any time before payment, this is logged distinctly as `approval_revoked` in the history rather than a fresh rejection
+- `rejected` requires a non-empty reason in both the initial-rejection and approval-reversal cases (Pydantic `min_length=1` + a 422 if missing), requesting more info requires a non-empty message the same way
+- `approved → paid`: reviewer/admin only, never the owner. Once `paid`, the status is final it cannot be rejected or reverted.
 - Every transition writes a `RequestHistory` row
 - **Every status transition is a single atomic, conditional database `UPDATE`** (`WHERE id = ... AND status IN (allowed statuses)`), not a Python read-then-write. This matters concretely: a naive "read the status, check it, then save" pattern has a real race — two simultaneous requests (a double-click, two open tabs, a retried network request) can both read the old status as still valid before either commits, and both "win." This was caught during manual concurrency testing (see `docs/testing.md`) and fixed for every transition endpoint (submit, approve, reject, request-info, mark-paid, and the reviewer-claims-request transition) — verified by firing 10 genuinely simultaneous requests at each and confirming exactly one succeeds.
 
