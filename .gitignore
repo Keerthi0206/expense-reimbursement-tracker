@@ -1,31 +1,21 @@
-# Dependencies
-node_modules/
-.pnp
-.pnp.js
-venv/
-__pycache__/
-*.pyc
-
-# Environment variables — never commit your keys
+# Secrets
 .env
 .env.local
-.env.*.local
+*.env
 
-# Build outputs
-dist/
-build/
-out/
+# Python
+__pycache__/
+*.pyc
+venv/
+.venv/
+*.db
+backend/uploads/
+
+# Node
+node_modules/
 .next/
-
-# Logs
-*.log
+out/
 npm-debug.log*
 
 # OS
 .DS_Store
-Thumbs.db
-
-# IDE
-.vscode/
-.idea/
-*.swp
