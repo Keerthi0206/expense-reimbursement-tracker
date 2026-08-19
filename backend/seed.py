@@ -3,20 +3,86 @@ Seeds the database with demo accounts and fictional sample reimbursement
 requests covering every workflow state, for demo/testing purposes.
 
 Run with: python seed.py
+Options:
+  --reset       Wipe existing users/requests first, then reseed from scratch
+  --scale N     Also generate N additional synthetic requests (random
+                category/amount/date/status) spread across the demo
+                requesters, for load-testing or a fuller-looking demo
 """
+import argparse
+import random
 from datetime import date, timedelta
 
-from app.core.database import Base, engine, SessionLocal
+from app.core.database import SessionLocal
+from app.core.db_setup import run_migrations
 from app.core.security import hash_password
 from app.models.models import (
-    User, ReimbursementRequest, RequestHistory, RoleEnum, StatusEnum, CategoryEnum,
+    User, ReimbursementRequest, RequestHistory, Notification, UserAccountHistory,
+    RoleEnum, StatusEnum, CategoryEnum,
 )
 
-Base.metadata.create_all(bind=engine)
+parser = argparse.ArgumentParser(description="Seed the expense tracker database")
+parser.add_argument("--reset", action="store_true", help="Wipe existing data first")
+parser.add_argument("--scale", type=int, default=0, help="Add N extra synthetic requests")
+args = parser.parse_args()
+
+def add_synthetic_requests(db, alice, bob, rachel, count):
+    titles = ["Client dinner", "Conference travel", "Software license", "Office chairs",
+              "Team offsite", "Parking reimbursement", "Hotel stay", "Printer ink",
+              "Catering", "Rideshare to airport"]
+    categories = list(CategoryEnum)
+    statuses_pool = [StatusEnum.submitted, StatusEnum.approved, StatusEnum.rejected, StatusEnum.paid]
+    today = date.today()
+    for i in range(count):
+        requester = random.choice([alice, bob])
+        status = random.choice(statuses_pool)
+        expense_date = today - timedelta(days=random.randint(1, 180))
+        req = ReimbursementRequest(
+            title=f"{random.choice(titles)} #{i}",
+            amount=round(random.uniform(10, 900), 2),
+            expense_date=expense_date,
+            category=random.choice(categories),
+            status=status,
+            requester_id=requester.id,
+            reviewer_id=rachel.id if status != StatusEnum.submitted else None,
+            submitted_at=expense_date,
+            reviewed_at=expense_date + timedelta(days=1) if status != StatusEnum.submitted else None,
+            paid_at=expense_date + timedelta(days=5) if status == StatusEnum.paid else None,
+        )
+        db.add(req)
+    db.commit()
+    print(f"Added {count} synthetic requests (--scale).")
+
+
+run_migrations()
 db = SessionLocal()
 
+if args.reset:
+    # child tables first -- both reference users and/or reimbursement_requests
+    db.query(RequestHistory).delete()
+    db.query(Notification).delete()
+    db.query(UserAccountHistory).delete()
+    db.query(ReimbursementRequest).delete()
+    db.query(User).delete()
+    db.commit()
+    print("Existing data wiped (--reset).")
+
 if db.query(User).count() > 0:
-    print("Database already has data. Skipping seed. Delete expense_tracker.db to reseed.")
+    if args.scale > 0:
+        # already-seeded db + --scale alone: just add more requests to the
+        # existing demo accounts, don't touch anything else
+        alice = db.query(User).filter(User.email == "alice@example.com").first()
+        bob = db.query(User).filter(User.email == "bob@example.com").first()
+        rachel = db.query(User).filter(User.email == "rachel@example.com").first()
+        if not (alice and bob and rachel):
+            print("Database has data but not the expected demo accounts -- use --reset first.")
+            db.close()
+            raise SystemExit(1)
+        add_synthetic_requests(db, alice, bob, rachel, args.scale)
+        db.close()
+        raise SystemExit(0)
+    print("Database already has data. Skipping seed. Use --reset to wipe and reseed, "
+          "or add --scale N on its own to just add more synthetic requests.")
     db.close()
     raise SystemExit(0)
 
@@ -127,6 +193,10 @@ db.add(RequestHistory(request_id=r6.id, user_id=rachel.id, action="marked_paid",
                        previous_status="approved", new_status="paid"))
 
 db.commit()
+
+if args.scale > 0:
+    add_synthetic_requests(db, alice, bob, rachel, args.scale)
+
 db.close()
 
 print("Seed complete. Demo accounts (all passwords: password123):")
