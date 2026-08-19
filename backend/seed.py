@@ -17,8 +17,14 @@ from app.core.database import SessionLocal
 from app.core.db_setup import run_migrations
 from app.core.security import hash_password
 from app.models.models import (
-    User, ReimbursementRequest, RequestHistory, Notification, UserAccountHistory,
-    RoleEnum, StatusEnum, CategoryEnum,
+    CategoryEnum,
+    Notification,
+    ReimbursementRequest,
+    RequestHistory,
+    RoleEnum,
+    StatusEnum,
+    User,
+    UserAccountHistory,
 )
 
 parser = argparse.ArgumentParser(description="Seed the expense tracker database")
