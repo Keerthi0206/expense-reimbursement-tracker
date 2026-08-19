@@ -85,6 +85,10 @@ jobs:
         working-directory: backend
         env:
           ALLOWED_ORIGINS: http://localhost:3000
+          # off for the same reason as the pytest suite (conftest.py) --
+          # parallel E2E workers logging in concurrently would otherwise
+          # trip the real login rate limit
+          RATE_LIMIT_ENABLED: "false"
         run: |
           nohup uvicorn app.main:app --port 8000 > /tmp/backend.log 2>&1 &
           disown
