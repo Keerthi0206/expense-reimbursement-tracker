@@ -6,4 +6,3 @@ __pycache__/
 uploads/
 .env
 .pytest_cache/
-tests/
