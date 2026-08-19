@@ -118,7 +118,7 @@ All demo accounts use password `password123`:
 
 ## Future improvements
 
-- Cloud deployment, continuous deployment and monitoring: none of these were attempted, since they need real hosting/service accounts that made more sense to set up with someone present not rushed unattended
+- Monitoring (e.g. Sentry) not attempted, needs a real third-party account. Continuous deployment is effectively already in place via Render and Vercel's auto-deploy on push to main.
 - Object storage (S3-compatible) with short-lived signed URLs for receipts, instead of local disk
 - Optimistic UI updates on approve/reject so the reviewer doesn't wait on a full reload
 - Admin-configurable reimbursement categories and budget thresholds instead of fixed in code
