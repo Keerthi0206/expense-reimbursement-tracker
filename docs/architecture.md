@@ -123,3 +123,31 @@ This pass also caught `docs/reflection.md` had drifted out of date in the same w
 ## Cancel requests
 
 Added after the core build, on request: a requester can cancel their own request any time before a reviewer approves or rejects it. The obvious implementation of "delete" — actually removing the row from the database — was deliberately not what got built, since it would contradict everything in the Request History and Auditability section: a deleted request has no history, no audit trail, nothing for a reviewer to ever see if they'd already been notified about it. Instead, `cancelled` is a real status, same tier as `approved` or `rejected` — the record, its full history, and the reason (if given) all stay intact. Reuses the same atomic-transition pattern as every other status change, so it's race-safe by construction rather than needing a separate fix later. If a reviewer had already claimed the request, they're notified that it was cancelled, same as every other meaningful status change in the app. Dashboard totals exclude cancelled requests from `total_requested`, matching how drafts are already excluded — a cancelled request was never really "requested" in the sense that number is meant to track.
+
+## Two-Tier Approval and Workflow Rules
+
+Requests over $500 (configurable), or in the `training` category regardless of amount, need a second approval from an admin after the first reviewer approval — a `pending_second_approval` status sits between `submitted` and `approved`. The rule lives in one small module (`app/core/workflow_rules.py`) instead of scattered conditionals, and the backend blocks the same person from giving both approvals, plus requires the second one specifically come from an admin, not just any reviewer.
+
+## Receipt Intelligence
+
+Tesseract handles OCR (it's a system dependency in the backend Dockerfile — `pytesseract` alone is just a Python wrapper, it needs the actual binary present). Images go straight through Tesseract; PDFs try their embedded text layer first, which is faster and exact for a digitally-generated invoice, and only fall back to rendering the page and OCRing it if there's no usable text layer, which covers scanned PDFs. Every extracted value comes back as a suggestion — the New Request form never fills a field on its own, the requester has to click to apply it. A separate on-demand endpoint re-runs extraction against an already-submitted request's stored receipt and flags it if the submitted amount or date doesn't line up.
+
+## Backend and API Depth
+
+- Alembic migrations instead of `Base.metadata.create_all`, run automatically on startup by both the server and `seed.py` — whichever runs first wins, the other is a no-op. Indexes on the columns that actually get filtered on (`status`, `requester_id`, `expense_date`) ship as a second migration.
+- Cursor-based pagination (`GET /api/requests/cursor`) alongside the existing page-based pagination, keyset-ordered by `(created_at, id)` so results don't shift if rows change between page loads.
+- Every route is reachable at both `/api/...` and `/api/v1/...`.
+- Login is rate limited (20 attempts/minute per IP).
+- Every request gets a structured JSON log line with a request ID and timing, and that same ID comes back to the client on a 500 error so a bug report can be traced to a specific log entry.
+
+## Analytics and Reporting
+
+Monthly totals, category and requester breakdowns, approval-time stats, and reviewer workload, computed in `app/core/analytics.py` from a single eager-loaded query. The first version accessed `request.requester.name` in a loop with no eager loading — a classic N+1 pattern, caught by measuring query counts directly (19 queries for 15 distinct requesters, down to 2 after adding `joinedload`). CSV and PDF export reuse the same role-scoped query the charts use, so an export can't leak another requester's data.
+
+## Accessibility
+
+Every error banner announces to screen readers and grabs keyboard focus when it appears, through one shared hook instead of duplicated logic per page. Form fields link to their errors with `aria-describedby` and `aria-invalid`. Two bugs came out of this pass: a clickable receipt thumbnail had no keyboard path to it at all (fixed by wrapping it in a `<button>`), and the admin page's "Loading users…" state was indistinguishable from a zero-result search, so a search with no matches looked stuck loading forever.
+
+## Testing and CI
+
+87 backend tests, plus 3 Playwright end-to-end tests that run against a real browser and real running servers, covering login/role-redirects, draft creation, and the full requester-submits → reviewer-approves flow. `.github/workflows/ci.yml` runs backend lint and tests, frontend lint and build, and the E2E suite on every push. Both linters caught real issues the first time I ran them, including a misconfigured `pyproject.toml` that was silently letting ruff run its full default rule set instead of the one I actually wanted.

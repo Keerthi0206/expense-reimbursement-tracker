@@ -2,10 +2,11 @@
 
 ## Approach
 
-Two layers of testing were used:
+Three layers of testing:
 
-1. **Automated tests** (`backend/tests/test_workflow.py`, `test_admin.py`, and `test_error_handling_and_authorization.py`) — 81 pytest cases run against the real FastAPI app via `TestClient`, sharing one isolated SQLite test database managed by `tests/conftest.py` for the whole session.
-2. **Manual end-to-end smoke testing** via curl against a running server, exercising the exact scenarios in the hackathon's "Minimum Demonstration Scenario" — done during development to catch integration issues (e.g. a JSON-serialization bug in the validation-error handler, a test-isolation bug where two test files silently shared one SQLite engine, and a genuine race condition in status transitions) that unit tests alone didn't surface.
+1. **Automated backend tests** (`backend/tests/`) — 87 pytest cases against the FastAPI app via `TestClient`, sharing one isolated SQLite test database managed by `tests/conftest.py`. Covers the workflow state machine, RBAC, the two-tier approval rules, receipt OCR extraction, analytics, cursor pagination, rate limiting, and a few regression tests locking in bugs found along the way (an N+1 query, a route-ordering collision, a database-persistence check).
+2. **End-to-end browser tests** (`e2e/`, Playwright) — 3 test files covering login/role-redirect, draft creation, and the full requester-submits → reviewer-approves workflow, run against running frontend and backend servers with Chromium.
+3. **CI** (`.github/workflows/ci.yml`) — every push runs backend lint + tests, frontend lint + build, and the E2E suite.
 
 ## Automated test results
 
@@ -22,6 +23,7 @@ tests/test_admin.py::test_admin_cannot_deactivate_self PASSED
 tests/test_admin.py::test_creating_a_user_is_logged_in_history PASSED
 tests/test_admin.py::test_non_admin_cannot_view_or_modify_user_history PASSED
 tests/test_admin.py::test_reminders_go_out_for_stale_pending_requests PASSED
+tests/test_admin.py::test_notification_cleanup_removes_only_old_read_notifications PASSED
 tests/test_error_handling_and_authorization.py::TestInvalidWorkflowActions::test_cannot_approve_a_draft PASSED
 tests/test_error_handling_and_authorization.py::TestInvalidWorkflowActions::test_cannot_reject_a_draft PASSED
 tests/test_error_handling_and_authorization.py::TestInvalidWorkflowActions::test_cannot_mark_paid_a_draft PASSED
@@ -50,6 +52,7 @@ tests/test_error_handling_and_authorization.py::TestGracefulErrorHandling::test_
 tests/test_error_handling_and_authorization.py::TestGracefulErrorHandling::test_unhandled_error_response_never_contains_secret_values PASSED
 tests/test_workflow.py::test_login_wrong_password_returns_401 PASSED
 tests/test_workflow.py::test_login_unknown_email_returns_401_not_500 PASSED
+tests/test_workflow.py::test_login_is_rate_limited_after_repeated_attempts PASSED
 tests/test_workflow.py::test_create_request_requires_auth PASSED
 tests/test_workflow.py::test_budget_limit_warning_flag_is_computed PASSED
 tests/test_workflow.py::test_negative_amount_rejected PASSED
@@ -74,14 +77,18 @@ tests/test_workflow.py::test_request_info_flow_and_resubmission PASSED
 tests/test_workflow.py::test_submitting_a_request_notifies_active_reviewers_and_admins PASSED
 tests/test_workflow.py::test_notifications_are_paginated_and_scoped_to_the_user PASSED
 tests/test_workflow.py::test_dashboard_totals_are_accurate PASSED
+tests/test_workflow.py::test_data_survives_a_completely_new_database_connection PASSED
 tests/test_workflow.py::test_analytics_requester_sees_only_own_data_no_cross_user_views PASSED
 tests/test_workflow.py::test_analytics_reviewer_sees_cross_user_breakdowns PASSED
+tests/test_workflow.py::test_analytics_does_not_n_plus_one_query_per_distinct_user PASSED
 tests/test_workflow.py::test_analytics_date_range_filters_correctly PASSED
 tests/test_workflow.py::test_csv_export_returns_real_csv_scoped_to_requester PASSED
 tests/test_workflow.py::test_pdf_export_returns_a_real_pdf PASSED
 tests/test_workflow.py::test_export_respects_status_filter PASSED
+tests/test_workflow.py::test_multi_value_status_filter PASSED
 tests/test_workflow.py::test_search_and_filter PASSED
 tests/test_workflow.py::test_duplicate_check_finds_matching_amount_and_date PASSED
+tests/test_workflow.py::test_cursor_pagination_walks_through_without_gaps_or_overlap PASSED
 tests/test_workflow.py::test_sorting_requests_by_amount PASSED
 tests/test_workflow.py::test_request_history_has_its_own_endpoint PASSED
 tests/test_workflow.py::test_deactivated_account_cannot_log_in PASSED
@@ -92,7 +99,7 @@ tests/test_workflow.py::test_receipt_analysis_flags_a_genuine_mismatch PASSED
 tests/test_workflow.py::test_receipt_analysis_no_mismatch_when_values_actually_match PASSED
 tests/test_workflow.py::test_receipt_analysis_respects_normal_access_control PASSED
 
-======================= 81 passed in 40.07s =======================
+======================= 87 passed in 49.51s =======================
 ```
 
 Run it yourself: `cd backend && pytest -v`
@@ -175,18 +182,18 @@ Run against a live server with the seeded demo accounts:
 
 When a second test file (`test_admin.py`) was added, running the full suite (`pytest tests/`) started failing with `OperationalError`s — but each file passed individually. Cause: both files set `os.environ["DATABASE_URL"]` to different filenames before importing the app, but `app.core.database` only executes that import once per process, so whichever file pytest imported first silently "won" for the whole session. The second file's teardown then dropped and deleted the *first* file's database out from under it. Fixed with a shared `tests/conftest.py` that sets the test database configuration exactly once, before either test file is imported, and owns the database's full lifecycle (create once at session start, drop once at session end) — individual test files now only seed their own data.
 
-## A real race condition found by manual concurrency testing
+## Race condition found by manual concurrency testing
 
-While verifying the "requests should not accidentally be submitted twice" requirement, automated tests alone weren't enough to catch this — they exercise one request at a time. Manually firing several genuinely simultaneous `curl` requests at `/submit` (via shell backgrounding) showed 2 of 5 succeeding, both writing a `submitted` history entry for the same request. The cause: the original code read the request's status, checked it in Python, then wrote the new status back — two concurrent requests could both pass the check before either one's write landed.
+While verifying the "requests should not accidentally be submitted twice" requirement, automated tests alone weren't enough — they exercise one request at a time. Firing several simultaneous `curl` requests at `/submit` (via shell backgrounding) showed 2 of 5 succeeding, both writing a `submitted` history entry for the same request. The cause: the original code read the request's status, checked it in Python, then wrote the new status back — two concurrent requests could both pass the check before either write landed.
 
-Fixed by making every status transition (submit, approve, reject, request-info, mark-paid, and the reviewer-claim transition) a single conditional database `UPDATE` — `WHERE id = ... AND status IN (allowed statuses)` — checking the affected row count rather than trusting a prior read. Verified the fix the same way the bug was found: firing 10 simultaneous requests at `/submit` and separately at `/mark-paid` (the highest-stakes one — a race there would mean double payment) and confirming exactly one succeeds each time. A permanent automated regression test, `test_double_submit_race_is_prevented`, now covers this with real Python threads so it can't silently regress.
+Fixed by making every status transition (submit, approve, reject, request-info, mark-paid, and the reviewer-claim transition) a single conditional database `UPDATE` — `WHERE id = ... AND status IN (allowed statuses)` — checking the affected row count rather than trusting a prior read. Verified the fix the same way the bug was found: firing 10 simultaneous requests at `/submit` and separately at `/mark-paid` (the highest-stakes one — a race there would mean double payment) and confirming exactly one succeeds each time. A permanent test, `test_double_submit_race_is_prevented`, covers this with actual Python threads.
 
 ## Pagination gaps found by re-auditing against the brief
 
-The brief names four resources that should paginate: reimbursement requests, users, notifications, and history records. Requests already paginated correctly, but three others didn't: `GET /api/notifications` and `GET /api/admin/users/{id}/history` both returned every row unbounded, and the admin users list had pagination on the backend with no Previous/Next controls in the UI at all. Fixed all three — notifications and both history endpoints now return the same consistent `{items, page, page_size, total, total_pages}` shape used everywhere else, and real pagination UI was added to the admin page and notifications page.
+The brief names four resources that should paginate: reimbursement requests, users, notifications, and history records. Requests already paginated correctly, but three others didn't: `GET /api/notifications` and `GET /api/admin/users/{id}/history` both returned every row unbounded, and the admin users list had pagination on the backend with no Previous/Next controls in the UI at all. Fixed all three — notifications and both history endpoints now return the same `{items, page, page_size, total, total_pages}` shape used everywhere else, and pagination UI was added to the admin and notifications pages.
 
-One deliberate judgment call, made explicit rather than left silent: a single request's history and a single user's account history are naturally small and bounded — a handful of status changes, rarely more than a dozen. Both got paginated backends (for correctness and consistency), but the frontend fetches one generous page for these two specific views rather than building visible Previous/Next controls, since forcing pagination onto a short list would hurt the UX more than it would help. The two genuinely unbounded lists — the full reviewer request queue and the admin user directory — get real, visible pagination controls.
+One deliberate call, made explicit rather than left silent: a single request's history and a single user's account history are naturally small — a handful of status changes, rarely more than a dozen. Both got paginated backends for correctness and consistency, but the frontend fetches one generous page for these two views rather than building visible Previous/Next controls, since forcing pagination onto a short list would hurt the UX more than help. The two actually unbounded lists — the reviewer request queue and the admin user directory — get real, visible pagination controls.
 
-## Known gap
+## Known gaps
 
-There is no automated frontend test suite (e.g. Playwright/Cypress) — testing there was manual, given the 5-day timeline. This is listed as a known limitation in the README.
+E2E coverage is currently 3 Playwright tests covering the most critical paths (login/role-redirect, draft creation, the full submit-then-approve workflow) — there's room to expand this further. Cloud deployment, continuous deployment, and monitoring weren't attempted, since they need real hosting/service accounts that made more sense to set up with someone present rather than rush unattended.
