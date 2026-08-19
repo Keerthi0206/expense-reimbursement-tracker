@@ -2,7 +2,7 @@
 
 **Live URL:** _add after deploying_
 
-A full-stack reimbursement tracker built for the CDF SDE Hackathon. Requesters create and submit expense requests with receipts; reviewers approve, reject, or mark them paid; both sides can track status, search, and filter. Built with FastAPI + SQLite on the backend and Next.js on the frontend.
+A full-stack reimbursement tracker built for the CDF SDE Hackathon. Requesters create and submit expense requests with receipts; reviewers approve, reject or mark them paid; both sides can track status, search and filter. Built with FastAPI + SQLite on the backend and Next.js on the frontend.
 
 ## Features implemented
 
