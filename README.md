@@ -113,14 +113,14 @@ All demo accounts use password `password123`:
 - Admin can create/view/manage users but there's no equivalent management UI for reimbursement-category configuration, categories are fixed in code (`CategoryEnum`) not admin-editable
 - Receipts are stored on local disk under `backend/uploads/` not object storage. Fine for a demo; would move to S3/private bucket + signed URLs for production.
 - Email notifications exist as a pluggable integration (off by default - see Features above) alongside the in-app notifications which work either way.
-- SQLite is used for local development. **Production (Render) uses PostgreSQL instead** — Render's free web services don't support persistent disks, so a SQLite file wouldn't reliably survive a restart there. The code reads `DATABASE_URL` from the environment, so this is a config change, not a code change — see the Deployment section above. Tested against a real Postgres instance, including the full test suite and the concurrency-safety fix.
+- SQLite is used for local development. **Production (Render) uses PostgreSQL instead**  Render's free web services don't support persistent disks, so a SQLite file wouldn't reliably survive a restart there. The code reads `DATABASE_URL` from the environment, so this is a config change not a code change see the Deployment section above. Tested against a real Postgres instance, including the full test suite and the concurrency-safety fix.
 
 ## Future improvements
 
-- Cloud deployment, continuous deployment, and monitoring — none of these were attempted, since they need real hosting/service accounts that made more sense to set up with someone present, not rushed unattended
+- Cloud deployment, continuous deployment and monitoring: none of these were attempted, since they need real hosting/service accounts that made more sense to set up with someone present not rushed unattended
 - Object storage (S3-compatible) with short-lived signed URLs for receipts, instead of local disk
 - Optimistic UI updates on approve/reject so the reviewer doesn't wait on a full reload
-- Admin-configurable reimbursement categories and budget thresholds, instead of fixed in code
+- Admin-configurable reimbursement categories and budget thresholds instead of fixed in code
 - Broader E2E coverage beyond the three critical-path tests currently there
 
-See `docs/architecture.md`, `docs/testing.md`, and `docs/reflection.md` for further detail.
+See `docs/architecture.md`, `docs/testing.md` and `docs/reflection.md` for further detail.
