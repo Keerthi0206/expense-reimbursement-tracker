@@ -7,7 +7,7 @@ from app.core.security import get_current_user
 from app.models.models import Notification, User
 from app.schemas.schemas import NotificationOut, PaginatedNotifications
 
-router = APIRouter(prefix="/api/notifications", tags=["notifications"])
+router = APIRouter(prefix="/notifications", tags=["notifications"])
 
 
 @router.get("", response_model=PaginatedNotifications)

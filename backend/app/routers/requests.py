@@ -5,14 +5,15 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Query
 from fastapi.responses import FileResponse
-from sqlalchemy.orm import Session
-from sqlalchemy import update
+from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import update, or_, and_
 
 from app.core.database import get_db
 from app.core.security import get_current_user, require_role
 from app.core.files import save_receipt, _detect_type, MAX_FILE_SIZE
 from app.core.workflow_rules import requires_second_approval
 from app.core.receipt_extraction import extract_receipt_suggestions, get_file_metadata
+from app.core.cursor import encode_cursor, decode_cursor
 from app.core.analytics import (
     compute_monthly_totals, compute_by_category, compute_by_requester,
     compute_approval_time, compute_reviewer_workload, compute_average_request_amount,
@@ -25,10 +26,10 @@ from app.schemas.schemas import (
     RequestCreate, RequestUpdate, RequestOut, RequestDetailOut, RequesterOut,
     PaginatedRequests, RejectDecision, ReviewDecision, InfoRequest, CancelRequest,
     DashboardSummary, PaginatedHistory, DuplicateCandidateOut,
-    ReceiptSuggestionOut, ReceiptAnalysisOut, AnalyticsOut,
+    ReceiptSuggestionOut, ReceiptAnalysisOut, AnalyticsOut, CursorPageOut,
 )
 
-router = APIRouter(prefix="/api/requests", tags=["requests"])
+router = APIRouter(prefix="/requests", tags=["requests"])
 
 
 def _log_history(db: Session, request_id: str, user_id: str, action: str,
@@ -291,18 +292,19 @@ def list_requests(
         query = query.filter(ReimbursementRequest.requester_id == requester_id)
 
     if status_filter:
-        # "pending" covers both submitted + under_review so a claimed request
-        # doesn't disappear from the reviewer's default queue
-        if status_filter == "pending":
-            query = query.filter(
-                ReimbursementRequest.status.in_([StatusEnum.submitted, StatusEnum.under_review])
-            )
-        else:
-            try:
-                status_enum = StatusEnum(status_filter)
-            except ValueError:
-                raise HTTPException(status_code=422, detail=f"Invalid status filter: {status_filter}")
-            query = query.filter(ReimbursementRequest.status == status_enum)
+        # comma-separated multi-value support (e.g. "approved,paid") on top
+        # of the existing single-value and "pending" alias behavior
+        requested_statuses = [s.strip() for s in status_filter.split(",") if s.strip()]
+        resolved_statuses = set()
+        for s in requested_statuses:
+            if s == "pending":
+                resolved_statuses.update([StatusEnum.submitted, StatusEnum.under_review])
+            else:
+                try:
+                    resolved_statuses.add(StatusEnum(s))
+                except ValueError:
+                    raise HTTPException(status_code=422, detail=f"Invalid status filter: {s}")
+        query = query.filter(ReimbursementRequest.status.in_(resolved_statuses))
     if category:
         query = query.filter(ReimbursementRequest.category == category)
     if date_from:
@@ -335,6 +337,67 @@ def list_requests(
     return PaginatedRequests(
         items=items, page=page, page_size=page_size, total=total, total_pages=total_pages,
     )
+
+
+@router.get("/cursor", response_model=CursorPageOut)
+def list_requests_cursor(
+    cursor: Optional[str] = None,
+    limit: int = Query(20, ge=1, le=100),
+    status_filter: Optional[str] = Query(None, alias="status"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Keyset pagination, ordered by (created_at, id) for stability -- unlike
+    page-number pagination, this doesn't skip or repeat rows if data changes
+    between page loads. Only supports the status filter for now (the offset
+    endpoint's full filter set stays there); demonstrating the mechanism, not
+    replacing the existing endpoint the frontend actually uses.
+    Registered here, before /{request_id}, since both are single-segment
+    paths -- if /{request_id} were registered first, a request to
+    /requests/cursor would incorrectly match it with request_id="cursor"."""
+    query = db.query(ReimbursementRequest)
+    if current_user.role == RoleEnum.requester:
+        query = query.filter(ReimbursementRequest.requester_id == current_user.id)
+
+    if status_filter:
+        if status_filter == "pending":
+            query = query.filter(
+                ReimbursementRequest.status.in_([StatusEnum.submitted, StatusEnum.under_review])
+            )
+        else:
+            try:
+                status_enum = StatusEnum(status_filter)
+            except ValueError:
+                raise HTTPException(status_code=422, detail=f"Invalid status filter: {status_filter}")
+            query = query.filter(ReimbursementRequest.status == status_enum)
+
+    if cursor:
+        try:
+            cursor_created_at, cursor_id = decode_cursor(cursor)
+        except Exception:
+            raise HTTPException(status_code=422, detail="Invalid or corrupted cursor")
+        query = query.filter(
+            or_(
+                ReimbursementRequest.created_at < cursor_created_at,
+                and_(
+                    ReimbursementRequest.created_at == cursor_created_at,
+                    ReimbursementRequest.id < cursor_id,
+                ),
+            )
+        )
+
+    query = query.order_by(ReimbursementRequest.created_at.desc(), ReimbursementRequest.id.desc())
+    rows = query.limit(limit + 1).all()
+
+    has_more = len(rows) > limit
+    items = rows[:limit]
+
+    next_cursor = None
+    if has_more and items:
+        last = items[-1]
+        next_cursor = encode_cursor(last.created_at, last.id)
+
+    return CursorPageOut(items=items, next_cursor=next_cursor, has_more=has_more)
 
 
 @router.get("/{request_id}", response_model=RequestDetailOut)
@@ -766,7 +829,9 @@ def analytics(
     (by_requester, reviewer_workload) that only make sense at that level.
     date_from/date_to optionally scope everything to a specific window
     (e.g. one month) -- unfiltered by default, showing all-time data."""
-    query = db.query(ReimbursementRequest)
+    query = db.query(ReimbursementRequest).options(
+        joinedload(ReimbursementRequest.requester), joinedload(ReimbursementRequest.reviewer),
+    )
     if current_user.role == RoleEnum.requester:
         query = query.filter(ReimbursementRequest.requester_id == current_user.id)
     if date_from:

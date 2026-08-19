@@ -66,14 +66,14 @@ class ReimbursementRequest(Base):
     id = Column(String, primary_key=True, default=gen_uuid)
     title = Column(String, nullable=False)
     amount = Column(Float, nullable=False)
-    expense_date = Column(Date, nullable=False)
-    category = Column(Enum(CategoryEnum), nullable=False)
+    expense_date = Column(Date, nullable=False, index=True)
+    category = Column(Enum(CategoryEnum), nullable=False, index=True)
     description = Column(Text, nullable=True)
 
-    status = Column(Enum(StatusEnum), nullable=False, default=StatusEnum.draft)
+    status = Column(Enum(StatusEnum), nullable=False, default=StatusEnum.draft, index=True)
 
-    requester_id = Column(String, ForeignKey("users.id"), nullable=False)
-    reviewer_id = Column(String, ForeignKey("users.id"), nullable=True)
+    requester_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    reviewer_id = Column(String, ForeignKey("users.id"), nullable=True, index=True)
 
     receipt_filename = Column(String, nullable=True)
     receipt_path = Column(String, nullable=True)
@@ -104,7 +104,7 @@ class RequestHistory(Base):
     __tablename__ = "request_history"
 
     id = Column(String, primary_key=True, default=gen_uuid)
-    request_id = Column(String, ForeignKey("reimbursement_requests.id"), nullable=False)
+    request_id = Column(String, ForeignKey("reimbursement_requests.id"), nullable=False, index=True)
     user_id = Column(String, ForeignKey("users.id"), nullable=False)
     action = Column(String, nullable=False)
     previous_status = Column(String, nullable=True)
@@ -119,7 +119,7 @@ class Notification(Base):
     __tablename__ = "notifications"
 
     id = Column(String, primary_key=True, default=gen_uuid)
-    user_id = Column(String, ForeignKey("users.id"), nullable=False)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
     request_id = Column(String, ForeignKey("reimbursement_requests.id"), nullable=True)
     message = Column(String, nullable=False)
     is_read = Column(Boolean, default=False)

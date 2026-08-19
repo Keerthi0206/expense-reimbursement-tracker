@@ -1,16 +1,18 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.security import verify_password, create_access_token, get_current_user
+from app.core.rate_limit import limiter
 from app.models.models import User
 from app.schemas.schemas import LoginRequest, Token, UserOut
 
-router = APIRouter(prefix="/api/auth", tags=["auth"])
+router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 @router.post("/login", response_model=Token)
-def login(payload: LoginRequest, db: Session = Depends(get_db)):
+@limiter.limit("20/minute")
+def login(request: Request, payload: LoginRequest, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == payload.email).first()
 
     # Deliberately generic error so we don't reveal whether the email exists.
