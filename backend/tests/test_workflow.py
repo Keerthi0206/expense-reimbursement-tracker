@@ -56,11 +56,30 @@ def auth_headers(token):
 def _make_fake_receipt_image(merchant, date_str, total):
     """Builds a real, OCR-readable receipt image with a proper TrueType font
     (not Pillow's crude default bitmap font, which garbles text badly and
-    was confirmed unreliable during development). Returns JPEG bytes."""
+    was confirmed unreliable during development). Returns JPEG bytes.
+
+    Tries known font paths across Linux (CI/Docker), macOS, and Windows in
+    order, since none of these paths exist on every platform."""
     from PIL import Image, ImageDraw, ImageFont
     img = Image.new("RGB", (500, 300), color="white")
     draw = ImageDraw.Draw(img)
-    font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf", 20)
+
+    candidate_fonts = [
+        "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",  # Linux (CI/Docker)
+        "/System/Library/Fonts/Supplemental/Courier New.ttf",   # macOS
+        "/System/Library/Fonts/Menlo.ttc",                       # macOS fallback
+        "C:\\Windows\\Fonts\\cour.ttf",                          # Windows
+    ]
+    font = None
+    for path in candidate_fonts:
+        try:
+            font = ImageFont.truetype(path, 20)
+            break
+        except OSError:
+            continue
+    if font is None:
+        font = ImageFont.load_default()
+
     lines = [merchant, f"Date: {date_str}", "", f"TOTAL:    ${total:.2f}"]
     y = 20
     for line in lines:
