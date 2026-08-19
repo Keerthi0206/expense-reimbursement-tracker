@@ -2,7 +2,7 @@
 
 ## What I Built
 
-A full-stack reimbursement tracker: FastAPI backend (SQLite locally, PostgreSQL in production), Next.js frontend, the full Create → Submit → Review → Approve/Reject → Paid workflow, with backend-enforced role-based access for requesters, reviewers, and admins.
+A full-stack reimbursement tracker: FastAPI backend (SQLite locally, PostgreSQL in production), Next.js frontend, the full Create → Submit → Review → Approve/Reject → Paid workflow, with backend-enforced role-based access for requesters, reviewers and admins.
 
 Past the core Tier 1 workflow, I picked a handful of Tier 2 categories and went deep on them instead of spreading thin across all of them:
 
