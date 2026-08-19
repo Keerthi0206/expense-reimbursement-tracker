@@ -15,11 +15,11 @@ Past the core Tier 1 workflow, I picked a handful of Tier 2 categories and went 
 
 ## Key decisions and tradeoffs
 
-- **SQLite locally, Postgres in production** — `DATABASE_URL` comes from the environment either way, so it's a config switch, not a code change. I tested the concurrency fix below against an actual Postgres instance rather than assuming SQLite behavior would carry over.
-- **Alembic over `create_all`** — I hit this the hard way mid-project: a schema change broke an existing local database with no way to fix it short of wiping it. Migrations give you an upgrade path instead. I tested both directions, up and down, before trusting it.
-- **JWT over sessions** — simpler for a small API, no session store to run. The tradeoff is no server-side revocation before the token expires, which is fine for a demo and wouldn't be for production.
+- **SQLite locally, Postgres in production** - `DATABASE_URL` comes from the environment either way, so it's a config switch, not a code change. I tested the concurrency fix below against an actual Postgres instance rather than assuming SQLite behavior would carry over.
+- **Alembic over `create_all`** - I hit this the hard way mid-project: a schema change broke an existing local database with no way to fix it short of wiping it. Migrations give you an upgrade path instead. I tested both directions, up and down before trusting it.
+- **JWT over sessions** - simpler for a small API, no session store to run. The tradeoff is no server-side revocation before the token expires which is fine for a demo and wouldn't be for production.
 - **Atomic updates instead of read-then-write for status changes** — concurrency testing turned up a race where two simultaneous requests could double-approve the same thing. Every transition is a single conditional `UPDATE` now.
-- **OCR stays a suggestion, never auto-fills** — the brief asked for this, and it's the right call anyway: accuracy depends a lot on image quality (I tested this directly — a rough bitmap font garbled several characters, a clean font was perfect), so treating it as a suggestion rather than a fact is the honest way to build it.
+- **OCR stays a suggestion, never auto-fills** - the brief asked for this and it's the right call anyway: accuracy depends a lot on image quality (I tested this directly a rough bitmap font garbled several characters, a clean font was perfect) so treating it as a suggestion rather than a fact is the honest way to build it.
 - **The second-approval rule lives in one small module**, not scattered if-statements, so "which requests need a second sign-off" is a single policy decision you can point to.
 - **Email is pluggable, not required** — it's a working integration (it does attempt SMTP and fails gracefully without credentials), but nothing in the app depends on it, since I don't have real credentials to test actual delivery with.
 
