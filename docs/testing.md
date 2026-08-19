@@ -4,7 +4,7 @@
 
 Three layers of testing:
 
-1. **Automated backend tests** (`backend/tests/`) — 87 pytest cases against the FastAPI app via `TestClient`, sharing one isolated SQLite test database managed by `tests/conftest.py`. Covers the workflow state machine, RBAC, the two-tier approval rules, receipt OCR extraction, analytics, cursor pagination, rate limiting, and a few regression tests locking in bugs found along the way (an N+1 query, a route-ordering collision, a database-persistence check).
+1. **Automated backend tests** (`backend/tests/`) — 91 pytest cases against the FastAPI app via `TestClient`, sharing one isolated SQLite test database managed by `tests/conftest.py`. Covers the workflow state machine, RBAC, the two-tier approval rules, receipt OCR extraction, analytics, cursor pagination, rate limiting, email notifications (`test_email.py`), and a few regression tests locking in bugs found along the way (an N+1 query, a route-ordering collision, a database-persistence check).
 2. **End-to-end browser tests** (`e2e/`, Playwright) — 3 test files covering login/role-redirect, draft creation, and the full requester-submits → reviewer-approves workflow, run against running frontend and backend servers with Chromium.
 3. **CI** (`.github/workflows/ci.yml`) — every push runs backend lint + tests, frontend lint + build, and the E2E suite.
 
@@ -99,7 +99,7 @@ tests/test_workflow.py::test_receipt_analysis_flags_a_genuine_mismatch PASSED
 tests/test_workflow.py::test_receipt_analysis_no_mismatch_when_values_actually_match PASSED
 tests/test_workflow.py::test_receipt_analysis_respects_normal_access_control PASSED
 
-======================= 87 passed in 49.51s =======================
+======================= 91 passed =======================
 ```
 
 Run it yourself: `cd backend && pytest -v`
