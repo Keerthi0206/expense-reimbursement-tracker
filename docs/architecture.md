@@ -47,13 +47,13 @@ expense-tracker/
 
 - **User**: id, name, email, hashed_password, role (requester/reviewer/admin), is_active
 - **ReimbursementRequest**: id, title, amount, expense_date, category, description, status, requester_id, reviewer_id, receipt_filename/path, rejection_reason, reviewer_comment, info_requested_message, timestamps (created/updated/submitted/reviewed/paid)
-- **RequestHistory**: append-only audit log — every create/submit/approve/reject/paid action is recorded with user, previous/new status, and comment
+- **RequestHistory**: append-only audit log every create/submit/approve/reject/paid action is recorded with user, previous/new status and comment
 - **Notification**: per-user, tied to a request, with read/unread state
-- **UserAccountHistory**: append-only audit log for admin actions on accounts — role changes and activate/deactivate events, recording who performed the action, the previous and new value, an optional reason, and when. Separate from `RequestHistory`, which tracks reimbursement-workflow actions, not account administration.
+- **UserAccountHistory**: append-only audit log for admin actions on accounts role changes and activate/deactivate events, recording who performed the action, the previous and new value, an optional reason and when. Separate from `RequestHistory`, which tracks reimbursement-workflow actions, not account administration.
 
 ## Where the Model Runs
 
-There is no ML model in this project — the "detection" work in the planning template doesn't apply here; see the note in `planning/planning.md`. All business logic (validation, status transitions, RBAC) runs synchronously in the FastAPI backend.
+There is no ML model in this project the "detection" work in the planning template doesn't apply here; see the note in `planning/planning.md`. All business logic (validation, status transitions, RBAC) runs synchronously in the FastAPI backend.
 
 ## Workflow Enforcement
 
